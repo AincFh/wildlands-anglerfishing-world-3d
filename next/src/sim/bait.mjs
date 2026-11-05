@@ -45,10 +45,10 @@ export function waitForBite(id,random){
  * pike at Rocky Point and perch/carp at Birch Cove. Unselected index weights
  * remain non-zero so every species can be found with starter bait.
  */
-export function chooseSpecies({bait=0,depth=0,location=0,random=.5}={}){
+export function speciesWeights({bait=0,depth=0,location=0}={}){
   const type=BAITS[Number.isInteger(bait)&&bait>=0&&bait<BAITS.length?bait:0];
   const d=clamp(depth,0,1),loc=clamp(location,0,2);
-  const weights=BASE_WEIGHTS.map((base,i)=>{
+  return BASE_WEIGHTS.map((base,i)=>{
     let w=base*type.weights[i];
     if(i>=4)w*=.75+d*1.95;
     if(i===7)w*=.55+d*3.0;
@@ -57,6 +57,9 @@ export function chooseSpecies({bait=0,depth=0,location=0,random=.5}={}){
     if(loc===2&&(i===4||i===5||i===7))w*=1.38;
     return Math.max(.0001,w);
   });
+}
+export function chooseSpecies({bait=0,depth=0,location=0,random=.5}={}){
+  const weights=speciesWeights({bait,depth,location});
   const total=weights.reduce((a,b)=>a+b,0);
   let remaining=clamp(random,0,0.999999999)*total;
   for(let i=0;i<weights.length;i++){remaining-=weights[i];if(remaining<0)return i}
