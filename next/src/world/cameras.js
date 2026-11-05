@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { clamp01 } from '../sim/controls.js';
 
-export const CAMERA_MODES = ['orbit', 'cinematic', 'shore', 'aerial', 'underwater'];
+export const CAMERA_MODES = ['orbit', 'cinematic', 'shore', 'aerial', 'underwater', 'boat'];
 
 function smooth(t) {
   return t * t * (3 - 2 * t);
@@ -24,7 +24,8 @@ export class CameraDirector {
 
     this._blend = 1; // 1 = settled into the scripted path
     this._portrait = false;
-    this._underwaterTarget = null; // narrow viewports get a wider, lower framing
+    this._underwaterTarget = null;
+    this._boatTarget=null; // narrow viewports get a wider, lower framing
     this._fromPos = new THREE.Vector3();
     this._fromQuat = new THREE.Quaternion();
     this._pos = new THREE.Vector3();
@@ -34,13 +35,15 @@ export class CameraDirector {
 
     // Any manual pointer input returns to orbit mode.
     domElement.addEventListener('pointerdown', () => {
-      if (this.mode !== 'orbit') this._userExit && this._userExit();
+      if (this.mode !== 'orbit'&&this.mode!=='boat') this._userExit && this._userExit();
     });
   }
 
   onUserExit(fn) {
     this._userExit = fn;
   }
+
+  followBoat(fn){this._boatTarget=typeof fn==='function'?fn:null;}
 
   followUnderwaterFish(fn){
     this._underwaterTarget=typeof fn==='function'?fn:null;
@@ -75,6 +78,16 @@ export class CameraDirector {
 
   _scriptedPose(mode, time, outPos, outLook) {
     switch (mode) {
+      case 'boat':{
+        const boat=this._boatTarget?.();
+        const fx=boat?.x??0,fz=boat?.z??0,heading=boat?.heading??0;
+        const alongX=Math.cos(heading),alongZ=Math.sin(heading);
+        // Over-the-stern chase camera; line of sight remains in bow
+        // direction so aiming and casting use the vessel's real heading.
+        outPos.set(fx-alongX*5.0,3.0,fz-alongZ*5.0);
+        outLook.set(fx+alongX*10,.45,fz+alongZ*10);
+        break;
+      }
       case 'underwater': {
         // Follow a real swimming fish, not a canned animation. The camera
         // sits below the surface without intersecting the lake floor.
