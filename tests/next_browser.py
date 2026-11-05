@@ -50,6 +50,7 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         driver.save_screenshot(str(ARTIFACTS / "01-title.png"))
         world=driver.execute_script("return window.__wildlandsNext.getState()")
         assert world["treeCount"] > 100, world
+        assert world["shoreDetails"]["grass"] > 200 and world["shoreDetails"]["rocks"] > 50, world
         assert world["renderer"] == "webgl", world
         driver.find_element(By.ID, "play").click()
         time.sleep(2)
@@ -79,6 +80,7 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         time.sleep(.35)
         caught=driver.execute_script("return window.__wildlandsNext.getState()")
         assert caught["phase"]=="caught" and caught["catches"] >= 1, caught
+        assert caught["trophyVisible"] and caught["fish3DMeshes"] >= 40, caught
         driver.save_screenshot(str(ARTIFACTS / "06-catch.png"))
         driver.find_element(By.ID, "shop").click()
         time.sleep(.3)
