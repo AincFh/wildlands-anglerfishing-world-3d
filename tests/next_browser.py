@@ -77,6 +77,17 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         ready=driver.execute_script("return window.__wildlandsNext.getState()")
         assert ready["started"] and ready["phase"] == "ready", ready
         driver.save_screenshot(str(ARTIFACTS / "02-lake-and-rod.png"))
+        # The sonar forecast is generated from the same distribution used at the hook.
+        driver.find_element(By.ID,"location").click()
+        forecast=driver.execute_script("""return {
+           visible: !document.getElementById('modal').hidden,
+           map: !!document.querySelector('.sonar-map'),
+           forecast: document.querySelectorAll('.sonar-species').length,
+           stations: document.querySelectorAll('[data-spot]').length
+        }""")
+        assert forecast == {"visible":True,"map":True,"forecast":5,"stations":3},forecast
+        driver.save_screenshot(str(ARTIFACTS / "02b-lake-sonar.png"))
+        driver.find_element(By.ID,"close").click()
         cast = driver.find_element(By.ID, "cast")
         ActionChains(driver).move_to_element(cast).click_and_hold().pause(.8).release().perform()
         # Software GPU frames are slow; advance the deterministic casting animation explicitly.
@@ -109,6 +120,12 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         assert caught["phase"]=="caught" and caught["catches"] >= 1, caught
         assert caught["trophyVisible"] and caught["fish3DMeshes"] >= 40, caught
         assert caught["contractsReady"] == 1, caught
+        assert caught["recentCatchCount"]>=1 and caught["lineSegments"]==15, caught
+        driver.find_element(By.ID,"journal").click()
+        assert "FIELD JOURNAL" in driver.find_element(By.ID,"modalBody").text
+        assert "最近 20 次鱼获" in driver.find_element(By.ID,"modalBody").text
+        driver.save_screenshot(str(ARTIFACTS / "06a-fish-catch-journal.png"))
+        driver.find_element(By.ID,"close").click()
         driver.save_screenshot(str(ARTIFACTS / "06-catch.png"))
         driver.find_element(By.ID, "contracts").click()
         assert "第一份渔获" in driver.find_element(By.ID, "modalBody").text
