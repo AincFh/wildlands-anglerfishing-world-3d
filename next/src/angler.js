@@ -74,7 +74,7 @@ function makeFishModel(){
 export function createAngler(world){
  const scene=world.scene,camera=world.camera;
  const ui=(id)=>document.getElementById(id);
- const state={phase:'ready',power:0,charging:false,reeling:false,elapsed:0,castT:0,waitT:0,biteT:0,distance:0,tension:.2,stress:0,slack:0,stamina:1,drag:.55,fish:null,weight:0,location:0,worldX:0,worldZ:0,started:false,model:'procedural'};
+ const state={phase:'ready',power:0,charging:false,reeling:false,elapsed:0,castT:0,waitT:0,biteT:0,distance:0,tension:.2,stress:0,slack:0,stamina:1,drag:.55,fish:null,weight:0,location:0,worldX:0,worldZ:0,started:false,model:'carbon-fiber'};
  let saveData=load(),totalTime=0,toastTimer=null;
  state.location=clamp(saveData.location|0,0,2);
  scene.add(camera); // first-person rod stays in the camera's local coordinate system
@@ -82,7 +82,7 @@ export function createAngler(world){
  let rodMesh=makeFallbackRod();rodPivot.add(rodMesh);
  // Optional real CC0 glTF asset; fallback always works if the CDN is blocked.
  const loader=new GLTFLoader();
- loader.load(FISHING_ROD,(asset)=>{
+ if(new URLSearchParams(location.search).get('rod')==='kit')loader.load(FISHING_ROD,(asset)=>{
   const m=asset.scene;m.rotation.x=-Math.PI/2;m.scale.setScalar(.85);
   m.traverse(o=>{if(o.isMesh){o.castShadow=false;o.frustumCulled=false}});
   rodPivot.remove(rodMesh);rodMesh=m;rodPivot.add(m);state.model='cc0-glb';
