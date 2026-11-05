@@ -89,7 +89,7 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         driver.find_element(By.ID, "close").click()
         driver.set_window_size(390, 844)
         time.sleep(.8)
-        mobile=driver.execute_script("""(() => {
+        mobile=driver.execute_script("""return (() => {
             const rect=id=>{const r=document.getElementById(id).getBoundingClientRect();
               return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};
             return {width:innerWidth,height:innerHeight,
