@@ -13,6 +13,7 @@ import { createSky } from './sky.js';
 import { createRain, createMist } from './weatherView.js';
 import { createAnimalsView } from './animalsView.js';
 import { createFishingBoat } from './boat.js';
+import { createFishSchoolsView } from './fishSchools.js';
 import { CameraDirector } from './cameras.js';
 
 export function createWorld({ renderer, isMobile = false }) {
@@ -51,11 +52,15 @@ export function createWorld({ renderer, isMobile = false }) {
   const boat = createFishingBoat();
   scene.add(boat.group);
 
+  // Real subsurface schools use only two instanced draws on either device.
+  const shoals=createFishSchoolsView({heightAt:terrain.heightAt,isMobile});
+  scene.add(shoals.group);
+
   // Mist banks, cloud sprites, the moon's additive halo, and firefly points
   // all smear soft blobs/streaks across the cube-map reflection (worst at
   // night) — exclude them from the cube camera. The moon DISC stays in, so
   // the water keeps a crisp moonlight streak.
-  water.hiddenFromReflection = [mist.group, sky.cloudGroup, sky.moonHalo, sky.stars, animals.fireflyPoints];
+  water.hiddenFromReflection = [mist.group, sky.cloudGroup, sky.moonHalo, sky.stars, animals.fireflyPoints, shoals.group];
 
   // --- simulation state ---
   const cycle = new TimeCycle(0.36);
@@ -100,6 +105,7 @@ export function createWorld({ renderer, isMobile = false }) {
     water,
     sky,
     boat,
+    shoals,
 
     // ---- setters (wired to UI + debug handle) ----
     setTimeOfDay(v, { resumeCycle = false } = {}) {
@@ -141,6 +147,7 @@ export function createWorld({ renderer, isMobile = false }) {
         rainCount: rain.activeCount,
         treeCount: forest.count,
         boat: { x: boat.group.position.x, z: boat.group.position.z },
+        fishSchools:shoals.getState(),
         pixelRatio
       };
     },
@@ -166,6 +173,7 @@ export function createWorld({ renderer, isMobile = false }) {
       forest.update(worldTime);
 
       boat.update(dt, worldTime, state.calmness, state.wind);
+      shoals.update(dt,{timeOfDay:tod,weather:weather.slider,wind:state.wind});
 
       const mistLevel = clamp01(
         state.mist * (0.45 + dawnFactor(tod) * 0.9) * (1 - nightFactor(tod) * 0.7) +
