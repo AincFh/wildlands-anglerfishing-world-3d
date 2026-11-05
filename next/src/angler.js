@@ -92,9 +92,28 @@ export function createAngler(world){
  function hint(tag,text,detail){ui('statusTag').textContent=tag;ui('instruction').textContent=text;ui('hint').textContent=detail}
  function event(title,detail){ui('eventTitle').textContent=title;ui('eventText').textContent=detail}
  function toast(text){const el=ui('toast');el.textContent=text;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),2200)}
- function sound(freq=440,len=.1){try{const AC=window.AudioContext||window.webkitAudioContext;
+ const audioBase=new URL('../../assets/',import.meta.url);
+ const sfxUrls={
+   cast:new URL('cast.wav',audioBase).href,
+   splash:new URL('splash.wav',audioBase).href,
+   catch:new URL('catch.wav',audioBase).href
+ };
+ const ambience=new Audio(new URL('morning_forest.wav',audioBase).href);
+ ambience.loop=true;ambience.volume=.12;ambience.preload='none';
+ let audioEnabled=true;
+ function ambientPlay(){
+   if(audioEnabled&&state.started&&!document.hidden)ambience.play().catch(()=>{});
+ }
+ function playCue(name){
+   if(!audioEnabled||!sfxUrls[name])return;
+   try{
+     const audio=new Audio(sfxUrls[name]);audio.volume=name==='catch'?.33:.22;
+     audio.play().catch(()=>{});
+   }catch{}
+ }
+ function sound(freq=440,len=.1){if(!audioEnabled)return;try{const AC=window.AudioContext||window.webkitAudioContext;
    if(!AC)return;const c=sound.ctx||(sound.ctx=new AC());const osc=c.createOscillator(),gain=c.createGain();
-   osc.type='sine';osc.frequency.setValueAtTime(freq,c.currentTime);gain.gain.setValueAtTime(.035,c.currentTime);
+   osc.type='sine';osc.frequency.setValueAtTime(freq,c.currentTime);gain.gain.setValueAtTime(.013,c.currentTime);
    gain.gain.exponentialRampToValueAtTime(.001,c.currentTime+len);osc.connect(gain).connect(c.destination);osc.start();osc.stop(c.currentTime+len)}catch{}}
  function updateFunds(){ui('funds').textContent='金币 '+saveData.coins.toLocaleString()+' · 鱼获 '+saveData.catches}
  function setPhase(v){state.phase=v;state.elapsed=0;state.charging=false;state.reeling=false;ui('fight').hidden=v!=='fighting';
@@ -160,11 +179,11 @@ export function createAngler(world){
   state.castT=0;setPhase('flying');bobber.group.visible=true;line.visible=true;
   bobber.group.position.copy(from);
   hint('鱼饵飞行中',aim.travel.toFixed(1)+' 米抛投 · 观察落点','松开镜头操作，让鱼漂自然入水');
-  sound(280,.10);
+  playCue('cast');sound(280,.10);
  }
  function beginWaiting(){
   setPhase('waiting');state.waitT=4+Math.random()*7;state.biteT=2.6;hint('等待鱼讯','鱼漂已经入水','注意鱼漂突然下沉时，按空格或点击提竿');
-  event('鱼漂已落在湖面','稍作等待，也可以点击“收回”重新选择落点。');sound(170,.14);
+  event('鱼漂已落在湖面','稍作等待，也可以点击“收回”重新选择落点。');playCue('splash');sound(170,.14);
  }
  function hook(){
   if(state.phase!=='bite')return;const rank=Math.random();
@@ -195,7 +214,7 @@ export function createAngler(world){
   fishModel.group.visible=true;
   hint('成功上岸','捕获 '+fish.name+' · '+state.weight.toFixed(2)+' kg','获得 '+payout+' 枚金币 · 点击继续');
   event('完美上岸 · '+fish.name,'重量 '+state.weight.toFixed(2)+' kg · 奖励 '+payout+' 金币');updateFunds();sound(970,.3);
-  toast('收获 '+fish.name+' '+state.weight.toFixed(2)+' kg！');
+  playCue('catch');toast('收获 '+fish.name+' '+state.weight.toFixed(2)+' kg！');
  }
  function reset(){bobber.group.visible=false;fishModel.group.visible=false;scene.add(fishModel.group);fishModel.group.scale.setScalar(1);line.visible=false;state.fish=null;setPhase('ready');
   hint('准备抛投','寻找水面波纹，选择抛投力度','WASD 沿湖岸移动 · 拖动环顾 · 空格蓄力')}
@@ -268,10 +287,18 @@ export function createAngler(world){
  if(e.key==='Escape')ui('modal').hidden=true;if(e.key==='r'||e.key==='R'){if(state.phase==='waiting')reset()}
  if(e.key==='['||e.key==='-')adjustDrag(-.05);if(e.key===']'||e.key==='=')adjustDrag(.05)});
  window.addEventListener('keyup',e=>{if(e.code==='Space'){e.preventDefault();endCharge()}});
- document.addEventListener('visibilitychange',()=>{if(document.hidden){state.reeling=false;state.charging=false}});
+ document.addEventListener('visibilitychange',()=>{
+   if(document.hidden){state.reeling=false;state.charging=false;ambience.pause()}
+   else ambientPlay();
+ });
+ ui('audioToggle').onclick=()=>{
+   audioEnabled=!audioEnabled;
+   ui('audioToggle').textContent=audioEnabled?'环境音：开':'环境音：关';
+   if(audioEnabled)ambientPlay();else ambience.pause();
+ };
  ui('play').onclick=()=>{
   ui('intro').hidden=true;ui('hud').hidden=false;state.started=true;world.setTimeOfDay(.31);world.setWind(.26);
-  world.setMist(.25);world.setCalmness(.78);updateFunds();
+  world.setMist(.25);world.setCalmness(.78);updateFunds();ambientPlay();
   // User gesture unlocks WebAudio (no autoplay sound).
   viewLocation(state.location);
  };
