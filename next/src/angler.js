@@ -115,10 +115,12 @@ export function createAngler(world){
  function viewLocation(i){
   if(state.phase!=='ready'&&state.phase!=='caught'&&state.phase!=='failed'){toast('先完成本次抛竿，再切换钓点');return}
   state.location=i;saveData.location=i;store();
-  const spots=[{pos:[17,10.8,57],title:'晨雾北岸 · NORTH BANK'},
-    {pos:[-43,7,35],title:'白桦浅湾 · BIRCH COVE'},
-    {pos:[45,8,-32],title:'岬角深水 · ROCKY POINT'}];
-  const spot=spots[i];camera.position.set(...spot.pos);world.director.controls.target.set(0,0,0);
+  const spots=[{pos:[18,65],title:'晨雾北岸 · NORTH BANK'},
+    {pos:[-61,27],title:'白桦浅湾 · BIRCH COVE'},
+    {pos:[57,-32],title:'岬角深水 · ROCKY POINT'}];
+  const spot=spots[i];camera.position.set(spot.pos[0],world.terrain.heightAt(spot.pos[0],spot.pos[1])+1.73,spot.pos[1]);
+  const inward=new THREE.Vector3(-spot.pos[0],0,-spot.pos[1]).normalize();
+  world.director.controls.target.copy(camera.position).addScaledVector(inward,25);
   world.director.controls.update();event(spot.title,'观察水面反光及鱼群动向，再决定抛投位置。');toast('已抵达 '+spot.title);
  }
  function beginCharge(){
@@ -173,7 +175,7 @@ export function createAngler(world){
   toast('收获 '+fish.name+' '+state.weight.toFixed(2)+' kg！');
  }
  function reset(){bobber.group.visible=false;fishModel.group.visible=false;line.visible=false;state.fish=null;setPhase('ready');
-  hint('准备抛投','寻找水面波纹，选择抛投力度','拖动场景可环顾 · 按住空格/中央按钮蓄力')}
+  hint('准备抛投','寻找水面波纹，选择抛投力度','WASD 沿湖岸移动 · 拖动环顾 · 空格蓄力')}
  function adjustDrag(n){state.drag=clamp(state.drag+n,.2,.90);ui('drag').textContent='泄力 '+Math.round(state.drag*100)+'%';sound(460,.035)}
  function openModal(title,html){const pane=ui('modal');ui('modalTitle').textContent=title;ui('modalBody').innerHTML=html;pane.hidden=false}
  function shop(){
@@ -202,6 +204,29 @@ export function createAngler(world){
  ui('weather').onclick=()=>{const w=(state.weatherLevel||0)+1;state.weatherLevel=w%3;world.setWeather([0,.52,.93][state.weatherLevel]);
   world.setWind([.20,.52,.85][state.weatherLevel]);toast(['晴日天气','山谷薄雾','风雨将至'][state.weatherLevel])};
  ui('dragDown').onclick=()=>adjustDrag(-.05);ui('dragUp').onclick=()=>adjustDrag(.05);
+ const walkingKeys=new Set();
+ window.addEventListener('keydown',e=>{if(['KeyW','KeyA','KeyS','KeyD'].includes(e.code)){walkingKeys.add(e.code);e.preventDefault()}});
+ window.addEventListener('keyup',e=>{walkingKeys.delete(e.code)});
+ window.addEventListener('blur',()=>walkingKeys.clear());
+ function walk(dt){
+  if(walkingKeys.size===0||!['ready','caught','failed'].includes(state.phase)||!state.started)return;
+  const fwd=new THREE.Vector3();camera.getWorldDirection(fwd);fwd.y=0;fwd.normalize();
+  const right=new THREE.Vector3(-fwd.z,0,fwd.x);
+  const dir=new THREE.Vector3();
+  if(walkingKeys.has('KeyW'))dir.add(fwd);
+  if(walkingKeys.has('KeyS'))dir.sub(fwd);
+  if(walkingKeys.has('KeyD'))dir.add(right);
+  if(walkingKeys.has('KeyA'))dir.sub(right);
+  if(dir.lengthSq()<.01)return;dir.normalize();
+  const speed=5.2,step=dir.clone().multiplyScalar(speed*dt);
+  const xx=camera.position.x+step.x,zz=camera.position.z+step.z;
+  const r=Math.hypot(xx,zz);if(r<59||r>110)return;
+  const floor=world.terrain.heightAt(xx,zz)+1.73;
+  camera.position.x=xx;camera.position.z=zz;
+  camera.position.y=lerp(camera.position.y,floor,Math.min(1,dt*9));
+  world.director.controls.target.add(step);
+  world.director.controls.target.y+=Math.min(1,dt*9)*(floor-camera.position.y);
+ }
  const action=ui('cast');action.addEventListener('pointerdown',e=>{e.preventDefault();action.setPointerCapture(e.pointerId);beginCharge()});
  action.addEventListener('pointerup',e=>{e.preventDefault();endCharge()});
  action.addEventListener('pointercancel',endCharge);
@@ -220,6 +245,7 @@ export function createAngler(world){
  function update(dt){
   totalTime+=dt;state.elapsed+=dt;
   if(!state.started)return;
+  walk(dt);
   const sway=(state.phase==='charging'?.31:state.phase==='fighting'?Math.sin(totalTime*7)*.13:.03*Math.sin(totalTime*1.5));
   rodPivot.rotation.x=lerp(rodPivot.rotation.x,-sway,clamp(dt*6));
   rodPivot.rotation.z=lerp(rodPivot.rotation.z,state.phase==='fighting'?Math.sin(totalTime*13)*.033:0,clamp(dt*8));
