@@ -29,8 +29,8 @@ const GEAR=[
  {name:'APEX 钛合金旗舰',price:5800,drag:1.65,reel:1.68,range:1.42}
 ];
 const KEY='wildlands-next-2026';
-const firstSave=()=>({coins:1200,catches:0,best:0,gear:0,owned:[0],collection:{},location:0,bait:0,baitStock:{1:0,2:0,3:0},contracts:normalizeContracts(),catchLog:[]});
-function load(){try{const v=JSON.parse(localStorage.getItem(KEY)||'null');if(!v||typeof v!=='object')return firstSave();const stock=baitStock(v.baitStock);return {...firstSave(),...v,collection:typeof v.collection==='object'&&v.collection?v.collection:{},owned:Array.isArray(v.owned)?v.owned:[0],baitStock:stock,bait:selectedBait(v.bait,stock),contracts:normalizeContracts(v.contracts),catchLog:normalizeCatchLog(v.catchLog)}}catch{return firstSave()}}
+const firstSave=()=>({coins:1200,catches:0,best:0,gear:0,owned:[0],collection:{},location:0,bait:0,baitStock:{1:0,2:0,3:0},contracts:normalizeContracts(),catchLog:[],boatOwned:false,boatFuel:100,boatDistance:0});
+function load(){try{const v=JSON.parse(localStorage.getItem(KEY)||'null');if(!v||typeof v!=='object')return firstSave();const stock=baitStock(v.baitStock);return {...firstSave(),...v,collection:typeof v.collection==='object'&&v.collection?v.collection:{},owned:Array.isArray(v.owned)?v.owned:[0],baitStock:stock,bait:selectedBait(v.bait,stock),contracts:normalizeContracts(v.contracts),catchLog:normalizeCatchLog(v.catchLog),boatOwned:v.boatOwned===true,boatFuel:clamp(Number.isFinite(v.boatFuel)?v.boatFuel:100,0,100),boatDistance:Math.max(0,Number.isFinite(v.boatDistance)?v.boatDistance:0)}}catch{return firstSave()}}
 const FISHING_ROD='https://cdn.3dassets.dev/assets/22406/v1/model.glb';
 function cylinderBetween(a,b,r0,r1,material,segments=8){
  const len=a.distanceTo(b),geo=new THREE.CylinderGeometry(r1,r0,len,segments);
@@ -72,7 +72,7 @@ function makeBobber(){
 export function createAngler(world){
  const scene=world.scene,camera=world.camera;
  const ui=(id)=>document.getElementById(id);
- const state={phase:'ready',power:0,charging:false,reeling:false,elapsed:0,castT:0,waitT:0,biteT:0,distance:0,tension:.2,stress:0,slack:0,stamina:1,drag:.55,fish:null,weight:0,location:0,worldX:0,worldZ:0,started:false,model:'carbon-fiber',activeBait:0};
+ const state={phase:'ready',power:0,charging:false,reeling:false,elapsed:0,castT:0,waitT:0,biteT:0,distance:0,tension:.2,stress:0,slack:0,stamina:1,drag:.55,fish:null,weight:0,location:0,worldX:0,worldZ:0,started:false,model:'carbon-fiber',activeBait:0,boatMode:'shore',lastBoatStore:0};
  let saveData=load(),totalTime=0,toastTimer=null;
  state.location=clamp(saveData.location|0,0,2);
  scene.add(camera); // first-person rod stays in the camera's local coordinate system
@@ -131,6 +131,7 @@ export function createAngler(world){
   ui('powerFill').style.width=v==='charging'?'0%':v==='fighting'?'0%':'0%';
  }
  function viewLocation(i){
+  if(state.boatMode!=='shore'){toast('请先在近岸抛锚并登陆，再切换码头');return}
   if(state.phase!=='ready'&&state.phase!=='caught'&&state.phase!=='failed'){toast('先完成本次抛竿，再切换钓点');return}
   state.location=i;saveData.location=i;store();
   const spots=[{pos:[18,65],title:'晨雾北岸 · NORTH BANK'},
@@ -144,6 +145,7 @@ export function createAngler(world){
  function beginCharge(){
   if(!state.started||!ui('modal').hidden||!ui('intro').hidden)return;
   if(world.director.mode==='underwater'){setUnderwater(false);return}
+  if(state.boatMode==='piloting'){toast('驾驶中无法抛竿，请先放锚');return}
   if(state.phase==='ready'||state.phase==='caught'||state.phase==='failed'){if(fishModel.group.parent===camera){scene.add(fishModel.group);fishModel.group.visible=false;fishModel.group.scale.setScalar(1)}setPhase('charging');state.power=.03;state.charging=true;hint('蓄力中','控制合适的抛投力度','松开空格或抛竿按钮，鱼饵将飞向湖面');sound(360,.035)}
   else if(state.phase==='bite')hook();
   else if(state.phase==='fighting')state.reeling=true;
@@ -156,6 +158,17 @@ export function createAngler(world){
  function projectAim(power=state.power){
   // Calculate an actual line/surface intersection. Never teleport an
   // invalid cast to the middle of the lake when looking back at the forest.
+  if(state.boatMode==='anchored'){
+   const vessel=world.boat.getState(),dx=Math.cos(vessel.heading),dz=Math.sin(vessel.heading);
+   const requested=(7+31*clamp(power,.03,1))*GEAR[saveData.gear].range;
+   const b=vessel.x*dx+vessel.z*dz,c=vessel.x*vessel.x+vessel.z*vessel.z-54.5**2;
+   const discriminant=b*b-c;
+   if(discriminant<0)return {ok:false,reason:'船只处于无效水域'};
+   const exit=-b+Math.sqrt(discriminant),travel=Math.min(requested,exit-1.5);
+   if(travel<5.5)return {ok:false,reason:'前方过于靠岸，请调整船头方向'};
+   const x=vessel.x+dx*travel,z=vessel.z+dz*travel;
+   return {ok:true,x,z,travel,depth:Math.max(0,1-Math.hypot(x,z)/54.5)};
+  }
   const dir=new THREE.Vector3();camera.getWorldDirection(dir);dir.y=0;
   if(dir.lengthSq()<.0001)return {ok:false,reason:'请面向湖泊'};
   dir.normalize();
@@ -351,7 +364,7 @@ export function createAngler(world){
   document.querySelectorAll('[data-spot]').forEach(btn=>btn.onclick=()=>{ui('modal').hidden=true;if(world.director.mode==='underwater')setUnderwater(false);viewLocation(+btn.dataset.spot)});
  }
  function setUnderwater(active){
-  if(active&&(state.phase!=='ready'||!state.started||!ui('modal').hidden)){
+  if(active&&(state.phase!=='ready'||!state.started||!ui('modal').hidden||state.boatMode!=='shore')){
    toast('先收回鱼竿并关闭面板，再进入水下观鱼');return false;
   }
   world.setCameraMode(active?'underwater':'orbit');
@@ -398,7 +411,7 @@ export function createAngler(world){
  window.addEventListener('keyup',e=>{walkingKeys.delete(e.code)});
  window.addEventListener('blur',()=>walkingKeys.clear());
  function walk(dt){
-  if(walkingKeys.size===0||!['ready','caught','failed'].includes(state.phase)||!state.started||world.director.mode==='underwater')return;
+  if(walkingKeys.size===0||!['ready','caught','failed'].includes(state.phase)||!state.started||world.director.mode!=='orbit')return;
   const fwd=new THREE.Vector3();camera.getWorldDirection(fwd);fwd.y=0;fwd.normalize();
   const right=new THREE.Vector3(-fwd.z,0,fwd.x);
   const dir=new THREE.Vector3();
