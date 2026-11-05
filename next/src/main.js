@@ -24,7 +24,11 @@ function boot(){
   world=createWorld({renderer,isMobile:mobile});
   if(softwareGPU){world.water.cubeEnabled=false;world.setWildlife(.42);renderer.setPixelRatio(.7)}
   angler=createAngler(world);
-  enhanceForest(world,{softwareGPU,mobile}).then(result=>{forestState=result;});
+  // Only request optional external forest assets when explicitly enabled; many
+  // third-party hosts disallow CORS and must not generate console errors.
+  if(new URLSearchParams(location.search).get('externalTrees')==='1'){
+    enhanceForest(world,{softwareGPU,mobile}).then(result=>{forestState=result;});
+  }else forestState={loaded:false,instances:0,source:'local-volume-forest',disabledReason:'external assets require CORS'};
   world.setTimeOfDay(.31);world.setWeather(.05);world.setWind(.26);
   world.setCalmness(.74);world.setWildlife(.80);
   const resize=()=>world.resize(window.innerWidth,window.innerHeight);
