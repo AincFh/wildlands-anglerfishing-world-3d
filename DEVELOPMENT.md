@@ -14,6 +14,8 @@ Open http://localhost:8080. Chrome/Edge with WebGL 2 is required.
 
 ```bash
 node --check game.js
+node --check fight.js
+node --test tests/fight.test.cjs
 python tests/verify_distribution.py
 ```
 
