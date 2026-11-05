@@ -20,9 +20,9 @@ jobs:
       - name: Vendor and verify self-hosted Three.js
         run: npm run vendor:three && npm run verify:three
       - name: JavaScript syntax
-        run: node --check game.js && node --check fight.js && node --check next/src/main.js && node --check next/src/angler.js && node --check next/src/sim/bait.mjs
+        run: node --check game.js && node --check fight.js && node --check next/src/main.js && node --check next/src/angler.js && node --check next/src/sim/bait.mjs && node --check next/src/sim/fishMotion.mjs
       - name: Deterministic fish combat tests
-        run: node --test tests/fight.test.cjs tests/bait.test.mjs
+        run: node --test tests/fight.test.cjs tests/bait.test.mjs tests/fish-motion.test.mjs
       - name: Verify asset and site completeness
         run: python3 tests/verify_distribution.py
   deploy:
