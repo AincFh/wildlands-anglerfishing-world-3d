@@ -91,6 +91,25 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         ready=driver.execute_script("return window.__wildlandsNext.getState()")
         assert ready["started"] and ready["phase"] == "ready", ready
         driver.save_screenshot(str(ARTIFACTS / "02-lake-and-rod.png"))
+        # The underwater mode must physically follow a real fish and make the
+        # rod unavailable; returning to shore must restore the ready state.
+        driver.find_element(By.ID,"observeFish").click()
+        driver.execute_script("window.__wildlandsNext.world.director.update(2.3,11.0)")
+        observed=driver.execute_script("""return {
+          ...window.__wildlandsNext.getState(),
+          noteVisible:!document.getElementById('underwaterNote').hidden,
+          modePressed:document.getElementById('observeFish').getAttribute('aria-pressed'),
+          cameraIsBelowSurface:window.__wildlandsNext.world.camera.position.y<-.45
+        }""")
+        assert observed["cameraMode"]=="underwater" and observed["observingFish"],observed
+        assert observed["rodHidden"] and observed["noteVisible"] and observed["cameraIsBelowSurface"],observed
+        assert observed["modePressed"]=="true",observed
+        driver.save_screenshot(str(ARTIFACTS / "02a-underwater-wildlife.png"))
+        driver.find_element(By.ID,"observeFish").click()
+        restored=driver.execute_script("return window.__wildlandsNext.getState()")
+        assert restored["cameraMode"]=="orbit" and not restored["rodHidden"],restored
+        assert driver.find_element(By.ID,"cast").text=="抛竿"
+
         # The sonar forecast is generated from the same distribution used at the hook.
         driver.find_element(By.ID,"location").click()
         forecast=driver.execute_script("""return {

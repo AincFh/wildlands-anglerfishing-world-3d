@@ -143,6 +143,7 @@ export function createAngler(world){
  }
  function beginCharge(){
   if(!state.started||!ui('modal').hidden||!ui('intro').hidden)return;
+  if(world.director.mode==='underwater'){setUnderwater(false);return}
   if(state.phase==='ready'||state.phase==='caught'||state.phase==='failed'){if(fishModel.group.parent===camera){scene.add(fishModel.group);fishModel.group.visible=false;fishModel.group.scale.setScalar(1)}setPhase('charging');state.power=.03;state.charging=true;hint('蓄力中','控制合适的抛投力度','松开空格或抛竿按钮，鱼饵将飞向湖面');sound(360,.035)}
   else if(state.phase==='bite')hook();
   else if(state.phase==='fighting')state.reeling=true;
@@ -347,8 +348,33 @@ export function createAngler(world){
    '<small>当前饵料 '+BAITS[saveData.bait].name+' · 活动指数 '+Math.round(environment.activity*100)+'%</small>'+
    '<div class="sonar-bars">'+bars+'</div><div class="sonar-live"><b>水下实体追踪 · '+actualFish.length+' 条</b><small>这些是附近正在自主游动的 3D 鱼影。实际命中鱼种取决于鱼群位置与生态，远处还有未被发现的深水鱼。</small></div></section></div>'+
    '<h3 class="catalog-title">选择岸线 / MOVE TO FISHING SPOT</h3><div class="sonar-spots">'+controls+'</div>');
-  document.querySelectorAll('[data-spot]').forEach(btn=>btn.onclick=()=>{ui('modal').hidden=true;viewLocation(+btn.dataset.spot)});
+  document.querySelectorAll('[data-spot]').forEach(btn=>btn.onclick=()=>{ui('modal').hidden=true;if(world.director.mode==='underwater')setUnderwater(false);viewLocation(+btn.dataset.spot)});
  }
+ function setUnderwater(active){
+  if(active&&(state.phase!=='ready'||!state.started||!ui('modal').hidden)){
+   toast('先收回鱼竿并关闭面板，再进入水下观鱼');return false;
+  }
+  world.setCameraMode(active?'underwater':'orbit');
+  ui('observeFish').setAttribute('aria-pressed',active?'true':'false');
+  ui('observeFish').textContent=active?'返回岸上':'水下观鱼';
+  ui('underwaterNote').hidden=!active;
+  ui('veil').classList.toggle('submerged',active);
+  rodPivot.visible=!active;
+  ui('touchMove').style.display=active?'none':'';
+  if(active){
+   ui('cast').textContent='返回岸上';
+   ui('controlHelp').textContent='仅观赏 · 点击返回后继续钓鱼';
+   hint('水下观鱼','正在跟拍真实 3D 鱼群','镜头跟随游鱼 · 点击画面、按 Esc 或点击按钮返回岸上');
+   event('水下世界 · 活体鱼群','相机实时跟随一条自主游动的湖鱼，而不是预先录制的过场动画。');
+  }else{
+   viewLocation(state.location);
+   setPhase(state.phase);
+   hint('准备抛投','寻找水面波纹，选择抛投力度','WASD 沿湖岸移动 · 拖动环顾 · 空格蓄力');
+  }
+  return true;
+ }
+ world.onCameraExit=()=>{if(ui('observeFish').getAttribute('aria-pressed')==='true')setUnderwater(false)};
+ ui('observeFish').onclick=()=>setUnderwater(world.director.mode!=='underwater');
  ui('close').onclick=()=>ui('modal').hidden=true;
  ui('modal').onclick=e=>{if(e.target===ui('modal'))ui('modal').hidden=true};
  ui('shop').onclick=shop;ui('journal').onclick=journal;ui('location').onclick=locationMenu;ui('contracts').onclick=contractsMenu;
@@ -372,7 +398,7 @@ export function createAngler(world){
  window.addEventListener('keyup',e=>{walkingKeys.delete(e.code)});
  window.addEventListener('blur',()=>walkingKeys.clear());
  function walk(dt){
-  if(walkingKeys.size===0||!['ready','caught','failed'].includes(state.phase)||!state.started)return;
+  if(walkingKeys.size===0||!['ready','caught','failed'].includes(state.phase)||!state.started||world.director.mode==='underwater')return;
   const fwd=new THREE.Vector3();camera.getWorldDirection(fwd);fwd.y=0;fwd.normalize();
   const right=new THREE.Vector3(-fwd.z,0,fwd.x);
   const dir=new THREE.Vector3();
@@ -394,7 +420,7 @@ export function createAngler(world){
  action.addEventListener('pointerup',e=>{e.preventDefault();endCharge()});
  action.addEventListener('pointercancel',endCharge);
  window.addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();if(e.repeat)return;beginCharge()}
- if(e.key==='Escape')ui('modal').hidden=true;if(e.key==='r'||e.key==='R'){if(state.phase==='waiting')reset()}
+ if(e.key==='Escape'){ui('modal').hidden=true;if(world.director.mode==='underwater')setUnderwater(false)}if(e.key==='r'||e.key==='R'){if(state.phase==='waiting')reset()}
  if(e.key==='['||e.key==='-')adjustDrag(-.05);if(e.key===']'||e.key==='=')adjustDrag(.05)});
  window.addEventListener('keyup',e=>{if(e.code==='Space'){e.preventDefault();endCharge()}});
  document.addEventListener('visibilitychange',()=>{
@@ -418,7 +444,7 @@ export function createAngler(world){
   if(!state.started)return;
   walk(dt);
   const aimMarker=ui('aim');
-  const showingAim=state.phase==='ready'||state.phase==='charging';
+  const showingAim=(state.phase==='ready'||state.phase==='charging')&&world.director.mode!=='underwater';
   aimMarker.style.opacity=showingAim?'.86':'0';
   if(showingAim){
     const aim=projectAim(state.phase==='charging'?state.power:.49);
@@ -499,6 +525,7 @@ export function createAngler(world){
   rodCount:rodPivot.children.length,trophyVisible:state.phase==='caught'&&fishModel.group.visible,fish3DMeshes:fishModel.meshCount,bobberVisible:bobber.group.visible,
   lineVisible:line.visible,fish:state.fish?.name||null,location:state.location,
   hookFromSchool:!!state.hookFromSchool,schoolFishNearFloat:world.shoals.scan(state.worldX,state.worldZ,14).length,
+  observingFish:world.director.mode==='underwater',rodHidden:!rodPivot.visible,
   bait:saveData.bait,baitName:BAITS[saveData.bait].name,activeBait:state.activeBait,baitStock:{...saveData.baitStock},
   contractsReady:availableClaims(saveData.contracts,saveData.catches),contractsCompleted:CONTRACTS.filter(job=>saveData.contracts.claimed[job.id]).length,
   recentCatchCount:saveData.catchLog.length,lineSegments:LINE_SEGMENTS,liveHabitat:habitat({

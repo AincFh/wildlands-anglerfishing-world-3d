@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { clamp01 } from '../sim/controls.js';
 
-export const CAMERA_MODES = ['orbit', 'cinematic', 'shore', 'aerial'];
+export const CAMERA_MODES = ['orbit', 'cinematic', 'shore', 'aerial', 'underwater'];
 
 function smooth(t) {
   return t * t * (3 - 2 * t);
@@ -23,7 +23,8 @@ export class CameraDirector {
     this.controls.enabled = true;
 
     this._blend = 1; // 1 = settled into the scripted path
-    this._portrait = false; // narrow viewports get a wider, lower framing
+    this._portrait = false;
+    this._underwaterTarget = null; // narrow viewports get a wider, lower framing
     this._fromPos = new THREE.Vector3();
     this._fromQuat = new THREE.Quaternion();
     this._pos = new THREE.Vector3();
@@ -39,6 +40,10 @@ export class CameraDirector {
 
   onUserExit(fn) {
     this._userExit = fn;
+  }
+
+  followUnderwaterFish(fn){
+    this._underwaterTarget=typeof fn==='function'?fn:null;
   }
 
   setMode(mode) {
@@ -70,6 +75,16 @@ export class CameraDirector {
 
   _scriptedPose(mode, time, outPos, outLook) {
     switch (mode) {
+      case 'underwater': {
+        // Follow a real swimming fish, not a canned animation. The camera
+        // sits below the surface without intersecting the lake floor.
+        const fish=this._underwaterTarget?.();
+        const fx=fish?.x??13,fz=fish?.z??35,fy=fish?.y??-1.4;
+        const a=time*.17;
+        outPos.set(fx+Math.cos(a)*3.8,Math.max(-1.6,Math.min(-.9,fy+.05)),fz+Math.sin(a)*3.8);
+        outLook.set(fx,Math.max(-2.3,Math.min(-.5,fy)),fz);
+        break;
+      }
       case 'cinematic': {
         const a = time * 0.045;
         const r = 50 + Math.sin(time * 0.11) * 9;
