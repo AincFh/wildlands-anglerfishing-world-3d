@@ -424,27 +424,71 @@ function renderWorld(){
  draw(models.foliage);draw(models.dynamic);gl.bindVertexArray(null);
 }
 function viewDir(){return [Math.sin(cam.yaw)*Math.cos(cam.pitch),Math.sin(cam.pitch),-Math.cos(cam.yaw)*Math.cos(cam.pitch)]}
-function rodAnimation(){let M=WORLD.dynamic;const f=viewDir(),right=[Math.cos(cam.yaw),0,Math.sin(cam.yaw)],p=(forward,side,up)=>[cam.x+f[0]*forward+right[0]*side,cam.y+up+f[1]*forward,cam.z+f[2]*forward+right[2]*side];
- let reelAngle=clock*1.6*(state.reeling?8:1);
- let first=p(.73,.51,-.59),handle=p(1.14,.46,-.51),middle=p(2.0,.31,-.23),tip=p(3.15,.21,.16);
- let bend=state.phase==='fighting' ? Math.pow(state.tension,1.2)*.94 : state.phase==='charging'?state.power*.19:0;
- tip[1]-=bend+Math.sin(clock*3)*.015; middle[1]-=bend*.33;
- ellipsoid(M,...p(.53,.48,-.68),.16,.22,.18,[.70,.53,.36],3,5,7);
- link(M,p(.58,.48,-.7),p(1.29,.43,-.45),.088,[.12,.14,.12],3,8);
- link(M,p(1.29,.43,-.45),middle,.040,[.34,.37,.33],3,8);
- link(M,middle,tip,.016,[.47,.51,.46],3,7);
- for(let q of [.50,.72,.9]){let point=[mix(handle[0],tip[0],q),mix(handle[1],tip[1],q),mix(handle[2],tip[2],q)];link(M,[point[0]-right[0]*.08,point[1]-.06,point[2]-right[2]*.08],[point[0]+right[0]*.08,point[1]+.07,point[2]+right[2]*.08],.012,COL.dark,3)}
- let reel=p(1.01,.59,-.69);ellipsoid(M,...reel,.19,.12,.19,[.24,.31,.30],3,6,10);ellipsoid(M,reel[0]+right[0]*.12,reel[1],reel[2]+right[2]*.12,.09,.13,.10,[.66,.71,.64],3,6,9);
- link(M,[reel[0],reel[1]-.14,reel[2]],[reel[0]+right[0]*(.21+.03*Math.sin(reelAngle)),reel[1]-.23,reel[2]+right[2]*(.21+.03*Math.sin(reelAngle))],.028,COL.dark,3);
- // natural-looking separate right forearm and sleeve
- link(M,p(.25,.59,-.88),p(.74,.49,-.63),.16,[.23,.35,.31],3,8);
+function rodAnimation(){
+ const M=WORLD.dynamic,f=viewDir(),right=[Math.cos(cam.yaw),0,Math.sin(cam.yaw)],
+   p=(forward,side,up)=>[cam.x+f[0]*forward+right[0]*side,cam.y+up+f[1]*forward,cam.z+f[2]*forward+right[2]*side];
+ const lerp3=(a,b,t)=>a.map((x,i)=>mix(x,b[i],t)),reelAngle=clock*(state.reeling?12:1.2);
+ let grip0=p(.51,.50,-.69),grip1=p(1.24,.39,-.48),mid=p(2.13,.24,-.18),tip=p(3.54,.08,.21);
+ const bend=state.phase==='fighting'?Math.pow(state.tension,1.25)*.82:state.phase==='charging'?state.power*.24:0;
+ mid[1]-=bend*.28;tip[1]-=bend+Math.sin(clock*2.3)*.012;
+ // Warm cork grip, subtle decorative wraps, tapering graphite blank and metallic ferrule.
+ link(M,grip0,grip1,.051,[.47,.36,.23],3,12);
+ for(let k=0;k<6;k++){
+  let t=.11+k*.095,a=lerp3(grip0,grip1,t),b=lerp3(grip0,grip1,t+.012);
+  link(M,a,b,.053,[.22,.19,.15],3,9);
+ }
+ let blank=grip1;
+ for(let i=0;i<12;i++){
+   let t0=i/12,t1=(i+1)/12;
+   let curve=t=>{
+    const A=lerp3(grip1,mid,Math.min(1,t*1.20)),B=lerp3(mid,tip,Math.max(0,(t-.38)/.62));
+    return t<.38?lerp3(grip1,mid,t/.38):lerp3(mid,tip,(t-.38)/.62);
+   };
+   let a=curve(t0),b=curve(t1),r=.032*(1-t0)+.0047;
+   link(M,a,b,r,[.095+.10*t0,.15+.12*t0,.16+.11*t0],3,9);blank=b;
+ }
+ const metal=[.57,.61,.55],gold=[.74,.62,.39];
+ // Proper circular titanium line guides, not the oversized cross bars in the previous version.
+ for(let t of [.34,.53,.69,.83,.94]){
+   let c=t<.38?lerp3(grip1,mid,t/.38):lerp3(mid,tip,(t-.38)/.62);
+   let rad=mix(.064,.026,t),origin=[c[0],c[1]+rad*.72,c[2]],prev=null,first=null;
+   link(M,c,origin,.010,metal,3,5);
+   for(let i=0;i<=12;i++){
+    let angle=TAU*i/12,pt=[origin[0]+right[0]*Math.cos(angle)*rad,origin[1]+Math.sin(angle)*rad,origin[2]+right[2]*Math.cos(angle)*rad];
+    if(prev)link(M,prev,pt,.0048,gold,3,4);else first=pt;prev=pt;
+   }
+ }
+ // Spinning reel under the grip: metallic drum, rotor bail and curved crank handle.
+ const reel=p(.96,.56,-.69),spool=[reel[0],reel[1]-.14,reel[2]];
+ link(M,lerp3(grip0,grip1,.57),spool,.019,[.15,.16,.15],3,7);
+ ellipsoid(M,...spool,.15,.118,.13,[.19,.24,.25],3,9,12);
+ const cap=[spool[0]+right[0]*.115,spool[1],spool[2]+right[2]*.115];
+ ellipsoid(M,...cap,.09,.10,.09,[.70,.71,.63],3,8,12);
+ const arm=[cap[0]+right[0]*.16,cap[1]-.065+Math.sin(reelAngle)*.025,cap[2]+right[2]*.16];
+ link(M,cap,arm,.014,metal,3,6);ellipsoid(M,...arm,.047,.048,.043,[.13,.15,.14],3,6,9);
+ // The player's hand wraps the grip, instead of covering the foreground with a plain block.
+ const wrist=p(.26,.59,-.89),palm=p(.70,.49,-.65);
+ link(M,wrist,p(.47,.55,-.74),.120,[.18,.25,.22],3,9);
+ ellipsoid(M,...palm,.102,.094,.105,[.57,.43,.32],3,8,11);
+ for(let k=0;k<3;k++){
+   let a=p(.66+k*.058,.50,-.65),b=p(.81+k*.032,.45,-.57);
+   link(M,a,b,.022,[.52,.39,.28],3,6);
+ }
  if(['casting','waiting','bite','fighting'].includes(state.phase)){
-  let end=state.bobber;let sag=state.phase==='fighting'?.06:.55;let last=tip;
-  for(let i=1;i<=18;i++){let u=i/18,pt=[mix(tip[0],end[0],u),mix(tip[1],end[1]+.29,u)-sag*Math.sin(u*Math.PI),mix(tip[2],end[2],u)];link(M,last,pt,.007,[.89,.95,.83],3,3);last=pt}
-  ellipsoid(M,end[0],end[1]+.17,end[2],.11,.21,.11,[.96,.37,.20],3,5,8);
-  ellipsoid(M,end[0],end[1]+.075,end[2],.12,.085,.12,[.95,.93,.76],3,4,8);
-  link(M,[end[0],end[1]+.25,end[2]],[end[0],end[1]+.41,end[2]],.013,COL.dark,3);
-  if(state.phase==='waiting'||state.phase==='bite'){let ringR=.5+(clock*.6%1)*1.55;for(let r=0;r<2;r++){let size=ringR+r*.35;for(let i=0;i<17;i++){let a=i*TAU/17,b=(i+1)*TAU/17;link(M,[end[0]+Math.cos(a)*size,.025,end[2]+Math.sin(a)*size],[end[0]+Math.cos(b)*size,.025,end[2]+Math.sin(b)*size],.011,[.65,.78,.65],3,3)}}}
+  const end=state.bobber,sag=state.phase==='fighting'?.06:.53;
+  let last=tip;
+  for(let i=1;i<=20;i++){let u=i/20,pt=[mix(tip[0],end[0],u),mix(tip[1],end[1]+.29,u)-sag*Math.sin(u*Math.PI),mix(tip[2],end[2],u)];link(M,last,pt,.0032,[.77,.84,.81],3,4);last=pt}
+  ellipsoid(M,end[0],end[1]+.17,end[2],.095,.17,.095,[.91,.38,.19],3,7,11);
+  ellipsoid(M,end[0],end[1]+.065,end[2],.101,.065,.101,[.88,.86,.69],3,6,9);
+  link(M,[end[0],end[1]+.25,end[2]],[end[0],end[1]+.38,end[2]],.009,COL.dark,3);
+  if(state.phase==='waiting'||state.phase==='bite'){
+   let ringR=.45+(clock*.6%1)*1.55;
+   for(let r=0;r<2;r++)for(let i=0;i<19;i++){
+    let a=i*TAU/19,b=(i+1)*TAU/19,size=ringR+r*.36;
+    link(M,[end[0]+Math.cos(a)*size,.025,end[2]+Math.sin(a)*size],
+      [end[0]+Math.cos(b)*size,.025,end[2]+Math.sin(b)*size],.009,[.62,.75,.69],3,3)
+   }
+  }
  }
 }
 function fishModel(m,x,y,z,heading,scale,color,flip=0){let s=scale,a=heading;let forward=[Math.sin(a),0,-Math.cos(a)],right=[Math.cos(a),0,Math.sin(a)];let loc=(u,v,w=0)=>[x+forward[0]*u+right[0]*v,y+w,z+forward[2]*u+right[2]*v];
