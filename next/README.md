@@ -51,6 +51,10 @@
 
 Three.js 运行时现由 **npm 固定版本 0.179.1 构建时打包到本站 `/next/vendor/three/`**，游戏运行**不再依赖外部 Three.js CDN**。仍要求 WebGL2；本地运行需先在仓库根目录执行 `npm install --no-audit --no-fund`、`npm run vendor:three`、`npm run verify:three`，再以 `python -m http.server 8080` 提供本地 HTTP 服务并打开 `/next/`。不能双击 HTML 使用 ES 模块。GitHub Actions 构建、浏览器测试、部署均使用同一固定版本，MIT 许可附带于 vendor 目录。可选外部钓竿 GLB 和树木模型仍受各自服务商网络状况影响，但默认不请求它们。
 
+## GitHub Pages 静态缓存与发布一致性
+
+GitHub Pages 对静态脚本有浏览器缓存。只给 HTML 添加 `?v=...` **不能刷新内部的 ES Module 导入**，这曾造成发布了新的鱼模型，玩家仍收到旧版动作逻辑。现在发布流水线运行 `scripts/version-next.mjs`，把整个 `dist/next/src/**` 依赖图里的相对模块 URL 统一改为当前 Git commit 的固定 `?v=<12位 SHA>`。原始源码保持可读、无发布参数，生产构建和真正的 Chrome/WebGL 验收使用同样的版本化目录。Three.js 自身由于版本锁定并本地化，可继续复用固定依赖缓存。
+
 ## 性能与限制
 
 这是**独立重建中的可玩公开预览，不是完成的商业级游戏**。真实鱼模型仍属于程序化造型，并非摄影测量或专业美术师制作的骨骼资产；森林也未达到大型商业 3D 游戏的植被复杂度。软件 GPU 的截图与帧率不能代表独立显卡实测性能。
