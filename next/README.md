@@ -41,7 +41,7 @@
 - `tests/next_browser.py`：真实 Chrome/Selenium/WebGL 浏览器验收。
 - `../.github/workflows/next-smoke.yml`：自动化验收及截图产物。
 
-需要网络加载 Three.js 0.179.1（jsDelivr），需要 WebGL2。使用静态 HTTP 服务器打开 `next/index.html`；不可直接双击文件模拟 HTTP 模块加载。正式部署通过 GitHub Pages 的 `/next/` 路由。
+Three.js 运行时现由 **npm 固定版本 0.179.1 构建时打包到本站 `/next/vendor/three/`**，游戏运行**不再依赖外部 Three.js CDN**。仍要求 WebGL2；本地运行需先在仓库根目录执行 `npm install --no-audit --no-fund`、`npm run vendor:three`、`npm run verify:three`，再以 `python -m http.server 8080` 提供本地 HTTP 服务并打开 `/next/`。不能双击 HTML 使用 ES 模块。GitHub Actions 构建、浏览器测试、部署均使用同一固定版本，MIT 许可附带于 vendor 目录。可选外部钓竿 GLB 和树木模型仍受各自服务商网络状况影响，但默认不请求它们。
 
 ## 性能与限制
 
