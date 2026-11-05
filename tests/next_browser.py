@@ -48,6 +48,12 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
             raise AssertionError(f"Could not initialize Three.js lake in 85s: {status}")
         driver.set_window_size(1024,650)
         driver.save_screenshot(str(ARTIFACTS / "01-title.png"))
+        # The runtime must really fetch Three.js from this same site,
+        # not from an unreliable third-party JavaScript CDN.
+        modules=driver.execute_script("""return performance.getEntriesByType('resource')
+          .map(r=>r.name).filter(u=>/three\.module|three\.core|GLTFLoader|BufferGeometryUtils|OrbitControls/.test(u))""")
+        assert any("/next/vendor/three/build/three.module.js" in x for x in modules), modules
+        assert not any("cdn.jsdelivr.net" in x for x in modules), modules
         world=driver.execute_script("return window.__wildlandsNext.getState()")
         assert world["treeCount"] > 100, world
         assert world["shoreDetails"]["grass"] > 200 and world["shoreDetails"]["rocks"] > 50, world
