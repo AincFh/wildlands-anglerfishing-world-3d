@@ -16,7 +16,7 @@ jobs:
         with:
           node-version: '22'
       - name: JavaScript syntax
-        run: node --check game.js && node --check fight.js
+        run: node --check game.js && node --check fight.js && node --check next/src/main.js && node --check next/src/angler.js
       - name: Deterministic fish combat tests
         run: node --test tests/fight.test.cjs
       - name: Verify asset and site completeness
@@ -43,6 +43,7 @@ jobs:
           mkdir -p dist
           cp index.html game.js fight.js style.css dist/
           cp -r assets dist/assets
+          cp -r next dist/next
           touch dist/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:

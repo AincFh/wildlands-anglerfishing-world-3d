@@ -1,0 +1,29 @@
+name: NEXT visual and gameplay smoke
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  next-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies and CJK fonts
+        run: |
+          python -m pip install selenium==4.37.0
+          sudo apt-get update -qq && sudo apt-get install -y fonts-wqy-microhei
+      - name: Real WebGL 3D scene + fishing interaction acceptance
+        run: python tests/next_browser.py
+      - name: Upload screenshots and state report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-fishing-visual-proof
+          path: test-artifacts/next/
+          if-no-files-found: ignore
