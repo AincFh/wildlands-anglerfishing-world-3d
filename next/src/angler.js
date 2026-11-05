@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {makeFishModel} from './world/fishModel.js';
 import {BAITS, baitStock, selectedBait, buyBait, consumeBait, waitForBite, chooseSpecies} from './sim/bait.mjs';
+import {CONTRACTS, normalizeContracts, recordCatch, claimContract, availableClaims, contractUnlocked} from './sim/contracts.mjs';
 
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -25,8 +26,8 @@ const GEAR=[
  {name:'APEX 钛合金旗舰',price:5800,drag:1.65,reel:1.68,range:1.42}
 ];
 const KEY='wildlands-next-2026';
-const firstSave=()=>({coins:1200,catches:0,best:0,gear:0,owned:[0],collection:{},location:0,bait:0,baitStock:{1:0,2:0,3:0}});
-function load(){try{const v=JSON.parse(localStorage.getItem(KEY)||'null');if(!v||typeof v!=='object')return firstSave();const stock=baitStock(v.baitStock);return {...firstSave(),...v,collection:typeof v.collection==='object'&&v.collection?v.collection:{},owned:Array.isArray(v.owned)?v.owned:[0],baitStock:stock,bait:selectedBait(v.bait,stock)}}catch{return firstSave()}}
+const firstSave=()=>({coins:1200,catches:0,best:0,gear:0,owned:[0],collection:{},location:0,bait:0,baitStock:{1:0,2:0,3:0},contracts:normalizeContracts()});
+function load(){try{const v=JSON.parse(localStorage.getItem(KEY)||'null');if(!v||typeof v!=='object')return firstSave();const stock=baitStock(v.baitStock);return {...firstSave(),...v,collection:typeof v.collection==='object'&&v.collection?v.collection:{},owned:Array.isArray(v.owned)?v.owned:[0],baitStock:stock,bait:selectedBait(v.bait,stock),contracts:normalizeContracts(v.contracts)}}catch{return firstSave()}}
 const FISHING_ROD='https://cdn.3dassets.dev/assets/22406/v1/model.glb';
 function cylinderBetween(a,b,r0,r1,material,segments=8){
  const len=a.distanceTo(b),geo=new THREE.CylinderGeometry(r1,r0,len,segments);
@@ -116,7 +117,8 @@ export function createAngler(world){
    if(!AC)return;const c=sound.ctx||(sound.ctx=new AC());const osc=c.createOscillator(),gain=c.createGain();
    osc.type='sine';osc.frequency.setValueAtTime(freq,c.currentTime);gain.gain.setValueAtTime(.013,c.currentTime);
    gain.gain.exponentialRampToValueAtTime(.001,c.currentTime+len);osc.connect(gain).connect(c.destination);osc.start();osc.stop(c.currentTime+len)}catch{}}
- function updateFunds(){ui('funds').textContent='金币 '+saveData.coins.toLocaleString()+' · 鱼获 '+saveData.catches;const b=BAITS[saveData.bait];const n=saveData.bait===0?'∞':(saveData.baitStock[saveData.bait]||0);if(ui('baitHud'))ui('baitHud').textContent='当前饵料 '+b.name+' · '+n+' 份 · 装备中可购买补充' }
+ function updateFunds(){ui('funds').textContent='金币 '+saveData.coins.toLocaleString()+' · 鱼获 '+saveData.catches;
+  if(ui('contracts')){const ready=availableClaims(saveData.contracts,saveData.catches);ui('contracts').textContent=ready?'委托 · '+ready+' 可领取':'湖泊委托'}const b=BAITS[saveData.bait];const n=saveData.bait===0?'∞':(saveData.baitStock[saveData.bait]||0);if(ui('baitHud'))ui('baitHud').textContent='当前饵料 '+b.name+' · '+n+' 份 · 装备中可购买补充' }
  function setPhase(v){state.phase=v;state.elapsed=0;state.charging=false;state.reeling=false;ui('fight').hidden=v!=='fighting';
   const labels={ready:'抛竿',charging:'蓄力',flying:'抛投中',waiting:'收回',bite:'提竿!',fighting:'收线',caught:'继续',failed:'重试'};
   ui('cast').textContent=labels[v]||'抛竿';ui('controlHelp').textContent={
@@ -214,6 +216,8 @@ export function createAngler(world){
   saveData.coins+=payout;saveData.catches++;saveData.best=Math.max(saveData.best,state.weight);
   const entry=saveData.collection[fish.name]||{count:0,best:0};
   entry.count++;entry.best=Math.max(entry.best,state.weight);saveData.collection[fish.name]=entry;
+  const mission=recordCatch(saveData.contracts,{species:fish.name,weight:state.weight,location:state.location,bait:state.activeBait,depth:state.depth},saveData.catches);
+  saveData.contracts=mission.progress;
   store();setPhase('caught');bobber.group.visible=false;line.visible=false;
   // Present the actual animated 3D fish in a cinematic first-person
   // trophy reveal, instead of text-only capture results.
@@ -224,7 +228,7 @@ export function createAngler(world){
   fishModel.group.visible=true;
   hint('成功上岸','捕获 '+fish.name+' · '+state.weight.toFixed(2)+' kg','获得 '+payout+' 枚金币 · 点击继续');
   event('完美上岸 · '+fish.name,'重量 '+state.weight.toFixed(2)+' kg · 奖励 '+payout+' 金币');updateFunds();sound(970,.3);
-  playCue('catch');toast('收获 '+fish.name+' '+state.weight.toFixed(2)+' kg！');
+  playCue('catch');toast(mission.completed.length?'委托完成 '+mission.completed.length+' 项 · 前往委托台领奖':'收获 '+fish.name+' '+state.weight.toFixed(2)+' kg！');
  }
  function reset(){bobber.group.visible=false;fishModel.group.visible=false;scene.add(fishModel.group);fishModel.group.scale.setScalar(1);line.visible=false;state.fish=null;setPhase('ready');
   hint('准备抛投','寻找水面波纹，选择抛投力度','WASD 沿湖岸移动 · 拖动环顾 · 空格蓄力')}
@@ -262,6 +266,24 @@ export function createAngler(world){
   return '<article class="item"><b>'+f.name+'</b><small>'+f.en+' · '+f.rare+'</small><small>'+(saved?'鱼获 '+saved.count+' · 最大 '+saved.best.toFixed(2)+' kg':'尚未发现')+'</small></article>'}).join('');
   openModal('湖泊鱼类图鉴 · '+Object.keys(saveData.collection).length+'/'+SPECIES.length,'<div class="catalog">'+cards+'</div>');
  }
+ function contractsMenu(){
+  const progress=normalizeContracts(saveData.contracts);
+  const cards=CONTRACTS.map(job=>{
+   const unlocked=contractUnlocked(job,saveData.catches);
+   const count=progress.counts[job.id],done=count>=job.goal,claimed=progress.claimed[job.id];
+   const status=!unlocked?'累计钓获 '+job.unlock+' 条后解锁':claimed?'奖励已领取':done?'目标完成 · 等待领取':'进度 '+count+' / '+job.goal;
+   const action=unlocked&&done&&!claimed?'<button type="button" data-contract-claim="'+job.id+'">领取 '+job.reward.toLocaleString()+' 金币</button>':'';
+   return '<article class="item contract-item'+(done?' complete':'')+'"><div class="contract-kicker">'+(unlocked?'RANGER COMMISSION':'LOCKED · 未解锁')+'</div><b>'+job.name+'</b><small>'+job.detail+'</small><div class="contract-track"><span style="width:'+Math.round(count/job.goal*100)+'%"></span></div><small>'+status+' · 奖励 '+job.reward.toLocaleString()+' 金币</small>'+action+'</article>';
+  }).join('');
+  openModal('湖泊巡护委托 · '+availableClaims(progress,saveData.catches)+' 项待领奖',
+   '<p class="contract-intro">完成垂钓调查，积累金币升级钓具。任务在本机存档中持续保留，奖励每项仅可领取一次。</p><div class="catalog">'+cards+'</div>');
+  document.querySelectorAll('[data-contract-claim]').forEach(btn=>btn.onclick=()=>{
+   const result=claimContract(saveData.contracts,btn.dataset.contractClaim,saveData.catches);
+   if(!result.ok)return;
+   saveData.contracts=result.progress;saveData.coins+=result.reward;
+   store();updateFunds();contractsMenu();sound(1040,.18);toast('巡护奖励 +'+result.reward.toLocaleString()+' 金币');
+  });
+ }
  function locationMenu(){
   const labels=['晨雾北岸 · North Bank','白桦浅湾 · Birch Cove','岬角深水 · Rocky Point'];
   openModal('选择钓点','<div class="catalog">'+labels.map((s,i)=>'<article class="item"><b>'+s+'</b><small>不同岸线构图与鱼群视野</small><button data-spot="'+i+'">前往钓点</button></article>').join('')+'</div>');
@@ -269,7 +291,8 @@ export function createAngler(world){
  }
  ui('close').onclick=()=>ui('modal').hidden=true;
  ui('modal').onclick=e=>{if(e.target===ui('modal'))ui('modal').hidden=true};
- ui('shop').onclick=shop;ui('journal').onclick=journal;ui('location').onclick=locationMenu;
+ ui('shop').onclick=shop;ui('journal').onclick=journal;ui('location').onclick=locationMenu;ui('contracts').onclick=contractsMenu;
+ ui('daytime').onclick=()=>{state.dayPartIndex=((state.dayPartIndex??0)+1)%4;const entries=[['晨光',.30],['正午',.50],['落日',.745],['星夜',.91]];const [name,value]=entries[state.dayPartIndex];world.setTimeOfDay(value,{resumeCycle:true});toast('时段调整 · '+name)};
  ui('weather').onclick=()=>{const w=(state.weatherLevel||0)+1;state.weatherLevel=w%3;world.setWeather([0,.52,.93][state.weatherLevel]);
   world.setWind([.20,.52,.85][state.weatherLevel]);toast(['晴日天气','山谷薄雾','风雨将至'][state.weatherLevel])};
  ui('dragDown').onclick=()=>adjustDrag(-.05);ui('dragUp').onclick=()=>adjustDrag(.05);
@@ -324,7 +347,7 @@ export function createAngler(world){
    if(audioEnabled)ambientPlay();else ambience.pause();
  };
  ui('play').onclick=()=>{
-  ui('intro').hidden=true;ui('hud').hidden=false;state.started=true;world.setTimeOfDay(.31);world.setWind(.26);
+  ui('intro').hidden=true;ui('hud').hidden=false;state.started=true;world.setTimeOfDay(.31,{resumeCycle:true});world.setWind(.26);
   world.setMist(.25);world.setCalmness(.78);updateFunds();ambientPlay();
   // User gesture unlocks WebAudio (no autoplay sound).
   viewLocation(state.location);
@@ -411,6 +434,7 @@ export function createAngler(world){
   distance:state.distance,tension:state.tension,coins:saveData.coins,catches:saveData.catches,
   rodCount:rodPivot.children.length,trophyVisible:state.phase==='caught'&&fishModel.group.visible,fish3DMeshes:fishModel.group.children.length,bobberVisible:bobber.group.visible,
   lineVisible:line.visible,fish:state.fish?.name||null,location:state.location,
-  bait:saveData.bait,baitName:BAITS[saveData.bait].name,activeBait:state.activeBait,baitStock:{...saveData.baitStock}
+  bait:saveData.bait,baitName:BAITS[saveData.bait].name,activeBait:state.activeBait,baitStock:{...saveData.baitStock},
+  contractsReady:availableClaims(saveData.contracts,saveData.catches),contractsCompleted:CONTRACTS.filter(job=>saveData.contracts.claimed[job.id]).length
  }),debug:{forceBite(){if(state.phase==='waiting'){state.waitT=0}},forceFish(){if(state.phase==='bite')hook()},forceCatch(){if(state.phase==='fighting'){state.distance=1;state.stamina=0}},setCoins(n){saveData.coins=n;store();updateFunds()}}};
 }
