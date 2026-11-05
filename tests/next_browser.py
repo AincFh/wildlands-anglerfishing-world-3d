@@ -31,7 +31,7 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
     opt.add_argument("--use-gl=angle")
     opt.add_argument("--use-angle=swiftshader")
     opt.add_argument("--enable-unsafe-swiftshader")
-    opt.add_argument("--window-size=1440,900")
+    opt.add_argument("--window-size=1024,650")
     opt.set_capability("goog:loggingPrefs", {"browser": "ALL"})
     driver = webdriver.Chrome(options=opt)
     driver.set_page_load_timeout(80)
@@ -46,6 +46,7 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
             status = driver.execute_script(
                 "return {text: document.body.innerText.slice(0,600),ready: document.readyState, hasGame:!!window.__wildlandsNext}")
             raise AssertionError(f"Could not initialize Three.js lake in 85s: {status}")
+        driver.set_window_size(1024,650)
         driver.save_screenshot(str(ARTIFACTS / "01-title.png"))
         world=driver.execute_script("return window.__wildlandsNext.getState()")
         assert world["treeCount"] > 100, world
