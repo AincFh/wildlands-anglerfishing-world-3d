@@ -243,6 +243,56 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         if delta<=.15:
             raise AssertionError(f"Touch move {delta:.3f}m; held={held}, phase={motion['phase']}, position={pos0}, update={motion}")
         mobile["movement_delta_m"]=round(delta,2)
+        # A genuine boat purchase then real mobile directional input must
+        # drive the existing world hull; anchoring enables actual lake fishing.
+        boat_before=driver.execute_script("return window.__wildlandsNext.getState()")
+        driver.execute_script("document.getElementById('boatButton').click()")
+        boarded=driver.execute_script("return window.__wildlandsNext.getState()")
+        assert boarded["boatOwned"] and boarded["boatMode"]=="piloting",boarded
+        assert boarded["coins"]==boat_before["coins"]-650,boarded
+        assert boarded["rodHidden"] and boarded["cameraMode"]=="boat",boarded
+        assert "燃油" in driver.find_element(By.ID,"boatHud").text
+        driver.save_screenshot(str(ARTIFACTS / "09-boarding.png"))
+        # Actual W pointerdown control is held while the same simulation
+        # callbacks used by the production loop advance movement and fuel.
+        advance=driver.find_element(By.CSS_SELECTOR,'#touchMove [data-move="KeyW"]')
+        ActionChains(driver).move_to_element(advance).click_and_hold().perform()
+        travel=driver.execute_script("""return (() => {
+          const g=window.__wildlandsNext,start=g.world.boat.getState();
+          for(let i=0;i<72;i++){
+            g.angler.update(.08);
+            g.world.boat.update(.08,i*.08,.78,.26);
+          }
+          return {start,finish:g.world.boat.getState(),pressed:
+            document.querySelector('#touchMove [data-move="KeyW"]').classList.contains('pressed')};
+        })()""")
+        ActionChains(driver).release().perform()
+        assert travel["pressed"],travel
+        assert travel["finish"]["distance"]>travel["start"]["distance"]+4,travel
+        assert travel["finish"]["fuel"]<travel["start"]["fuel"],travel
+        assert travel["finish"]["speed"]>0,travel
+        driver.execute_script("document.getElementById('boatButton').click()")
+        anchored=driver.execute_script("return window.__wildlandsNext.getState()")
+        assert anchored["boatMode"]=="anchored" and not anchored["rodHidden"],anchored
+        assert anchored["boat"]["speed"]==0 and anchored["boat"]["mode"]=="anchored",anchored
+        driver.save_screenshot(str(ARTIFACTS / "10-anchored-boat.png"))
+        # This is a new real fishing cast, started from a floating boat rather
+        # than from a shore teleport. It is tested separately from shore cast.
+        boat_cast=driver.execute_script("""return (() => {
+          const g=window.__wildlandsNext;
+          g.angler.beginCharge();g.angler.update(.78);g.angler.endCharge();
+          if(g.getState().phase==='flying')g.angler.update(1);
+          return g.getState();
+        })()""")
+        assert boat_cast["phase"] in ("flying","waiting"),boat_cast
+        assert boat_cast["boatMode"]=="anchored",boat_cast
+        assert boat_cast["boat"]["speed"]==0,boat_cast
+        driver.save_screenshot(str(ARTIFACTS / "11-fishing-from-boat.png"))
+        driver.execute_script("window.__wildlandsNext.angler.reset()")
+        saved_boat=driver.execute_script("""return JSON.parse(
+          localStorage.getItem('wildlands-next-2026'))""")
+        assert saved_boat["boatOwned"] and saved_boat["boatFuel"]<100,saved_boat
+
         errors=[entry["message"] for entry in driver.get_log("browser")
                  if entry["level"] == "SEVERE" and "favicon" not in entry["message"]]
         # Third-party optional GLB may be blocked in some test regions; the

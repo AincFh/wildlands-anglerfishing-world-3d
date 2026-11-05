@@ -64,7 +64,7 @@ function boot(){
   test:{setWeather:v=>world.setWeather(v),forceBite:()=>angler.debug.forceBite(),
        forceFish:()=>angler.debug.forceFish(),forceCatch:()=>angler.debug.forceCatch(),
        setCoins:n=>angler.debug.setCoins(n),moveLocation:i=>angler.viewLocation(i)},
-  version:'next-0.4.1'
+  version:'next-0.5.0'
  };
 }
 boot();

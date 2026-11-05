@@ -2,6 +2,7 @@
 // wave field as the water mesh and ducks, and leaves a soft foam wake.
 import * as THREE from 'three';
 import { waveHeight } from '../sim/waves.js';
+import {makeBoatNavigation} from '../sim/boatPhysics.mjs';
 
 function wood(color, opts = {}) {
   return new THREE.MeshStandardMaterial({ color, roughness: 0.82, metalness: 0.02, ...opts });
@@ -91,31 +92,40 @@ export function createFishingBoat() {
     if (o.isMesh && o !== wake) o.castShadow = true;
   });
 
-  let angle = 0.7;
-
+  const navigation=makeBoatNavigation();
+  const controls={forward:false,reverse:false,left:false,right:false};
   return {
-    group,
-    update(dt, time, calmness, wind) {
-      angle += dt * (0.032 + wind * 0.03);
-      const r = 11.5 + Math.sin(time * 0.11) * 1.6;
-      const x = Math.cos(angle) * r;
-      const z = Math.sin(angle) * r;
-      const heading = angle + Math.PI / 2;
-      const surface = waveHeight(x, z, time, calmness, wind);
+    group,navigation,
+    board:(dock,fuel)=>navigation.board(dock,fuel),
+    anchor:()=>navigation.anchor(),
+    resume:()=>navigation.resume(),
+    disembark:()=>navigation.disembark(),
+    refuel:amount=>navigation.refuel(amount),
+    setControls(next={}){
+      controls.forward=!!next.forward;controls.reverse=!!next.reverse;
+      controls.left=!!next.left;controls.right=!!next.right;
+    },
+    getState:()=>navigation.state(),
+    update(dt,time,calmness,wind){
+      const position=navigation.update(dt,{...controls,wind,calmness,time});
+      const x=position.x,z=position.z;
+      const heading=position.heading;
+      const surface=waveHeight(x,z,time,calmness,wind);
 
-      group.position.set(x, surface * 0.85 + 0.16 + Math.sin(time * 0.8) * 0.025, z);
-      group.rotation.y = -heading;
+      group.position.set(x,surface*.85+.16+Math.sin(time*.8)*.025,z);
+      group.rotation.y=-heading;
 
-      // Pitch/roll from the local wave slope so the hull rides swells honestly.
-      const e = 1.2;
-      const sx = (waveHeight(x + e, z, time, calmness, wind) - waveHeight(x - e, z, time, calmness, wind)) / (2 * e);
-      const sz = (waveHeight(x, z + e, time, calmness, wind) - waveHeight(x, z - e, time, calmness, wind)) / (2 * e);
-      group.rotation.x = THREE.MathUtils.clamp(sz * 0.5, -0.16, 0.16);
-      group.rotation.z = THREE.MathUtils.clamp(-sx * 0.5, -0.16, 0.16);
+      const e=1.2;
+      const sx=(waveHeight(x+e,z,time,calmness,wind)-waveHeight(x-e,z,time,calmness,wind))/(2*e);
+      const sz=(waveHeight(x,z+e,time,calmness,wind)-waveHeight(x,z-e,time,calmness,wind))/(2*e);
+      group.rotation.x=THREE.MathUtils.clamp(sz*.5,-.16,.16);
+      group.rotation.z=THREE.MathUtils.clamp(-sx*.5,-.16,.16);
 
-      const pulse = 0.5 + 0.5 * Math.sin(time * 1.7);
-      wake.scale.set(1 + pulse * 0.2 + wind * 0.35, 1, 1 + pulse * 0.12);
-      wakeMat.opacity = 0.07 + wind * 0.1 + pulse * 0.04;
+      const pulse=.5+.5*Math.sin(time*1.7);
+      const speedFoam=Math.min(1,Math.abs(position.speed)/8.4);
+      wake.scale.set(1+pulse*.2+wind*.35+speedFoam*.9,1,1+pulse*.12+speedFoam*.28);
+      wakeMat.opacity=.06+wind*.07+pulse*.025+speedFoam*.26;
+      return position;
     }
   };
 }

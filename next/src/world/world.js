@@ -88,6 +88,7 @@ export function createWorld({ renderer, isMobile = false }) {
   // --- cameras ---
   const director = new CameraDirector(camera, renderer.domElement);
   director.followUnderwaterFish(()=>shoals.simulation.fish.find(f=>f.cooldown===0&&!f.reserved));
+  director.followBoat(()=>boat.getState());
 
   // --- lighting/shadows ---
   renderer.shadowMap.enabled = !isMobile;
@@ -148,7 +149,7 @@ export function createWorld({ renderer, isMobile = false }) {
         fps: Math.round(fps.avg),
         rainCount: rain.activeCount,
         treeCount: forest.count,
-        boat: { x: boat.group.position.x, z: boat.group.position.z },
+        boat:boat.getState(),
         fishSchools:shoals.getState(),
         pixelRatio
       };
