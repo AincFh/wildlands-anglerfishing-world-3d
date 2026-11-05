@@ -15,6 +15,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install exact runtime package for local browser shipping
+        run: npm install --ignore-scripts --no-audit --no-fund --no-package-lock
+      - name: Vendor and verify self-hosted Three.js
+        run: npm run vendor:three && npm run verify:three
       - name: JavaScript syntax
         run: node --check game.js && node --check fight.js && node --check next/src/main.js && node --check next/src/angler.js && node --check next/src/sim/bait.mjs
       - name: Deterministic fish combat tests
@@ -37,6 +41,14 @@ jobs:
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build local Three.js runtime for publishing
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund --no-package-lock
+          npm run vendor:three
+          npm run verify:three
       - uses: actions/configure-pages@v5
       - name: Build GitHub Pages artifact
         run: |
@@ -44,6 +56,9 @@ jobs:
           cp index.html game.js fight.js style.css dist/
           cp -r assets dist/assets
           cp -r next dist/next
+          test -s dist/next/vendor/three/build/three.module.js
+          test -s dist/next/vendor/three/build/three.core.js
+          test -s dist/next/vendor/three/LICENSE
           touch dist/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:
