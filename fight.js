@@ -35,6 +35,7 @@
   function clampDrag(n){return clamp(n,.2,.9);}
   function makeFight(fish,weight,distance,bearing=0){
     const p=profile(fish,weight);
+    p.lineLimit=Math.max(p.lineLimit,clamp(distance,1,190)+32);
     return {
       profile:p,distance:clamp(distance,1,190),tension:.24,stamina:1,
       stress:0,slack:0,drag:.55,elapsed:0,burst:0,burstCount:0,
