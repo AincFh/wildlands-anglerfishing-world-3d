@@ -40,7 +40,7 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         for seconds in range(85):
             time.sleep(1)
             valid = driver.execute_script(
-                "return !!window.__wildlandsNext && document.querySelector('#loading').classList.contains('out')")
+                "return !!window.__wildlandsNext && (!document.querySelector('#loading') || document.querySelector('#loading').classList.contains('out'))")
             if valid: break
         else:
             status = driver.execute_script(
