@@ -228,6 +228,17 @@ export function createAngler(world){
   world.setWind([.20,.52,.85][state.weatherLevel]);toast(['晴日天气','山谷薄雾','风雨将至'][state.weatherLevel])};
  ui('dragDown').onclick=()=>adjustDrag(-.05);ui('dragUp').onclick=()=>adjustDrag(.05);
  const walkingKeys=new Set();
+ document.querySelectorAll('#touchMove button[data-move]').forEach(button=>{
+   const key=button.dataset.move;
+   button.addEventListener('pointerdown',e=>{
+     e.preventDefault();button.setPointerCapture(e.pointerId);
+     walkingKeys.add(key);button.classList.add('pressed');
+   });
+   const release=()=>{walkingKeys.delete(key);button.classList.remove('pressed')};
+   button.addEventListener('pointerup',release);
+   button.addEventListener('pointercancel',release);
+   button.addEventListener('lostpointercapture',release);
+ });
  window.addEventListener('keydown',e=>{if(['KeyW','KeyA','KeyS','KeyD'].includes(e.code)){walkingKeys.add(e.code);e.preventDefault()}});
  window.addEventListener('keyup',e=>{walkingKeys.delete(e.code)});
  window.addEventListener('blur',()=>walkingKeys.clear());
