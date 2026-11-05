@@ -1,0 +1,14 @@
+{
+  "name": "wildlands-next-static-runtime",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Reproducible build tooling for self-hosting Three.js with WILDLANDS NEXT",
+  "scripts": {
+    "vendor:three": "node scripts/vendor-three.mjs",
+    "verify:three": "node scripts/verify-three.mjs"
+  },
+  "dependencies": {
+    "three": "0.179.1"
+  }
+}
