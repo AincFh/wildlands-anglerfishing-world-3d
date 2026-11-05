@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {createWorld} from './world/world.js';
 import {createAngler} from './angler.js';
 import {enhanceForest} from './world/forestUpgrade.js';
+import {createShoreDetails} from './world/shoreDetails.js';
 
 const loading=document.getElementById('loading');
 function crash(reason){
@@ -12,7 +13,7 @@ function crash(reason){
 }
 function boot(){
  const canvas=document.getElementById('scene');
- let renderer,world,angler;let forestState={loaded:false,instances:0};
+ let renderer,world,angler,shore;let forestState={loaded:false,instances:0};
  try{
   renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.6));
@@ -22,6 +23,8 @@ function boot(){
   const softwareGPU=!!navigator.webdriver;
   const mobile=softwareGPU||matchMedia('(pointer:coarse)').matches||window.innerWidth<700;
   world=createWorld({renderer,isMobile:mobile});
+  shore=createShoreDetails(world.terrain.heightAt,{lowPower:softwareGPU||mobile});
+  world.scene.add(shore.group);
   if(softwareGPU){world.water.cubeEnabled=false;world.setWildlife(.42);renderer.setPixelRatio(.7)}
   angler=createAngler(world);
   // Only request optional external forest assets when explicitly enabled; many
@@ -55,7 +58,7 @@ function boot(){
  requestAnimationFrame(frame);
  window.__wildlandsNext={
   renderer,world,angler,scene:world.scene,
-  getState:()=>({renderer:'webgl',...world.getState(),...angler.getState(),forestUpgrade:forestState}),
+  getState:()=>({renderer:'webgl',...world.getState(),...angler.getState(),forestUpgrade:forestState,shoreDetails:shore.count}),
   test:{setWeather:v=>world.setWeather(v),forceBite:()=>angler.debug.forceBite(),
        forceFish:()=>angler.debug.forceFish(),forceCatch:()=>angler.debug.forceCatch(),
        setCoins:n=>angler.debug.setCoins(n),moveLocation:i=>angler.viewLocation(i)},
