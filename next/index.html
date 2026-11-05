@@ -61,6 +61,12 @@ button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e9ffa
 .field-row{display:grid;grid-template-columns:1fr 2fr 1.4fr;gap:10px;align-items:center;padding:11px 0;border-bottom:1px solid rgba(224,243,228,.1);font-size:12px}
 .field-row span{color:#deece3}.field-row small{color:#9fb9b2;text-align:right;line-height:1.6}
 @media(max-width:620px){.sonar-layout{grid-template-columns:1fr}.sonar-map{max-height:265px}.sonar-data{padding:0}.field-row{grid-template-columns:1fr 1.7fr}.field-row small{grid-column:1/-1;text-align:left}}
+/* Underwater spectator view: soft immersive tint, no opaque mask. */
+#veil.submerged{background:linear-gradient(180deg,rgba(3,40,52,.33),rgba(8,75,72,.19) 35%,rgba(2,35,46,.35))}
+#underwaterNote{position:absolute;top:106px;left:50%;transform:translateX(-50%);min-width:230px;max-width:min(460px,82vw);text-align:center;padding:10px 15px;background:rgba(10,43,47,.48);border:1px solid rgba(159,216,197,.32);border-radius:12px;backdrop-filter:blur(8px);pointer-events:none}
+#underwaterNote[hidden]{display:none}#underwaterNote b{display:block;font-size:10px;letter-spacing:.14em;color:#c7efdc;margin-bottom:4px}#underwaterNote span{font-size:11px;color:#d4e8df}
+#observeFish[aria-pressed="true"]{border-color:#b5e0bf;background:rgba(44,96,82,.75);color:#eeffed}
+@media(max-width:800px){.toptools{overflow-x:auto;flex-wrap:nowrap;justify-content:flex-start;scrollbar-width:thin;padding-bottom:3px}.toptools .glass-btn{flex-shrink:0;white-space:nowrap}#underwaterNote{top:94px;padding:8px 10px}#underwaterNote span{font-size:9px}}
 </style>
 </head>
 <body>
@@ -69,8 +75,9 @@ button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e9ffa
 <div id="hud" hidden>
   <div class="topbar">
     <div class="brand"><span class="brand-mark">W</span><div><strong>WILDLANDS <span style="color:var(--accent)">NEXT</span></strong><small>山野钓行 / ALPINE FISHING RESERVE</small></div></div>
-    <div class="toptools"><span class="top-meta" id="clock">06:30 · 晴</span><button class="glass-btn" id="weather">天气</button><button class="glass-btn" id="daytime">时段</button><button class="glass-btn" id="location">探鱼图</button><button class="glass-btn" id="contracts">湖泊委托</button><button class="glass-btn" id="journal">图鉴 / 日志</button><button class="glass-btn" id="shop">装备</button></div>
+    <div class="toptools"><span class="top-meta" id="clock">06:30 · 晴</span><button class="glass-btn" id="weather">天气</button><button class="glass-btn" id="daytime">时段</button><button class="glass-btn" id="location">探鱼图</button><button class="glass-btn" id="observeFish" type="button" aria-pressed="false" title="跟随湖中真实游动的鱼群">水下观鱼</button><button class="glass-btn" id="contracts">湖泊委托</button><button class="glass-btn" id="journal">图鉴 / 日志</button><button class="glass-btn" id="shop">装备</button></div>
   </div>
+  <div id="underwaterNote" hidden aria-live="polite"><b>LIVE UNDERWATER · 水下跟拍</b><span>正在追随真实游动的鱼群 · 点击「返回岸上」恢复钓鱼</span></div>
   <div id="event"><span class="eyebrow">LAKE VISTA · 钓点 01</span><strong id="eventTitle">薄雾在山谷间缓缓散开</strong><span id="eventText">观察湖面鱼群，把饵送到合适的水域。</span></div>
   <div id="aim"><span class="aim-ring"></span><span id="aimText">观察湖面 · 确认落点</span></div>
   <div id="touchMove" aria-label="触屏移动控制">
