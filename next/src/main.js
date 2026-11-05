@@ -32,7 +32,7 @@ function boot(){
   if(new URLSearchParams(location.search).get('externalTrees')==='1'){
     enhanceForest(world,{softwareGPU,mobile}).then(result=>{forestState=result;});
   }else forestState={loaded:false,instances:0,source:'local-volume-forest',disabledReason:'external assets require CORS'};
-  world.setTimeOfDay(.31);world.setWeather(.05);world.setWind(.26);
+  world.setTimeOfDay(.31,{resumeCycle:true});world.setWeather(.05);world.setWind(.26);
   world.setCalmness(.74);world.setWildlife(.80);
   const resize=()=>world.resize(window.innerWidth,window.innerHeight);
   window.addEventListener('resize',resize);resize();
@@ -46,7 +46,9 @@ function boot(){
    world.update(dt);
    if(first){first=false;loading.classList.add('out');setTimeout(()=>loading.remove(),1050)}
    if(now-lastClock>650){
-    lastClock=now;document.getElementById('clock').textContent=(world.getState().weather>0.6?'雨 · ':'晴 · ')+'06:30 · '+world.getState().fps+' FPS';
+    lastClock=now;const sky=world.getState();const minute=Math.floor((((sky.timeOfDay%1)+1)%1)*1440);const time=String(Math.floor(minute/60)).padStart(2,'0')+':'+String(minute%60).padStart(2,'0');
+    const weather=sky.weather>.68?'风雨':sky.weather>.30?'薄雾':'晴朗';
+    document.getElementById('clock').textContent=weather+' · '+time+' · '+sky.fps+' FPS';
    }
    frames++;
   }catch(err){
@@ -62,7 +64,7 @@ function boot(){
   test:{setWeather:v=>world.setWeather(v),forceBite:()=>angler.debug.forceBite(),
        forceFish:()=>angler.debug.forceFish(),forceCatch:()=>angler.debug.forceCatch(),
        setCoins:n=>angler.debug.setCoins(n),moveLocation:i=>angler.viewLocation(i)},
-  version:'next-0.2.0'
+  version:'next-0.3.0'
  };
 }
 boot();

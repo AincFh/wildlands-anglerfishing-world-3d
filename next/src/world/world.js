@@ -102,9 +102,9 @@ export function createWorld({ renderer, isMobile = false }) {
     boat,
 
     // ---- setters (wired to UI + debug handle) ----
-    setTimeOfDay(v) {
+    setTimeOfDay(v, { resumeCycle = false } = {}) {
       cycle.set(clamp01(v));
-      cycle.auto = false;
+      cycle.auto = !!resumeCycle;
       forceSkyRefresh = true;
     },
     setWeather(v) {

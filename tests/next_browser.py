@@ -95,9 +95,7 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         driver.find_element(By.ID, "cast").click()
         time.sleep(.3)
         assert driver.execute_script("return window.__wildlandsNext.getState().phase")=="fighting"
-        # Real-world Three.js mesh uses independent tail and fin hinges, with
-        # an anatomical silhouette that differs by species. A snapshot alone
-        # cannot prove animation, so advance the actual gameplay clock.
+        # Independent anatomical hinges must animate in the live 3D engine.
         pose0=driver.execute_script("return window.__wildlandsNext.getState()")
         driver.execute_script("window.__wildlandsNext.angler.update(.21)")
         pose1=driver.execute_script("return window.__wildlandsNext.getState()")
@@ -110,7 +108,23 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         caught=driver.execute_script("return window.__wildlandsNext.getState()")
         assert caught["phase"]=="caught" and caught["catches"] >= 1, caught
         assert caught["trophyVisible"] and caught["fish3DMeshes"] >= 40, caught
+        assert caught["contractsReady"] == 1, caught
         driver.save_screenshot(str(ARTIFACTS / "06-catch.png"))
+        driver.find_element(By.ID, "contracts").click()
+        assert "第一份渔获" in driver.find_element(By.ID, "modalBody").text
+        before_claim=driver.execute_script("return window.__wildlandsNext.getState().coins")
+        driver.find_element(By.CSS_SELECTOR, '[data-contract-claim="first-cast"]').click()
+        after_claim=driver.execute_script("return window.__wildlandsNext.getState()")
+        assert after_claim["coins"]-before_claim == 260, after_claim
+        assert after_claim["contractsReady"] == 0 and after_claim["contractsCompleted"] == 1, after_claim
+        assert not driver.find_elements(By.CSS_SELECTOR, '[data-contract-claim="first-cast"]')
+        driver.save_screenshot(str(ARTIFACTS / "06b-ranger-contracts.png"))
+        driver.find_element(By.ID, "close").click()
+        driver.find_element(By.ID, "daytime").click()
+        assert .48 < driver.execute_script("return window.__wildlandsNext.world.getState().timeOfDay") < .53
+        driver.find_element(By.ID, "daytime").click()
+        assert .72 < driver.execute_script("return window.__wildlandsNext.world.getState().timeOfDay") < .78
+        assert " · " in driver.find_element(By.ID, "clock").text
         driver.find_element(By.ID, "shop").click()
         time.sleep(.3)
         assert not driver.find_element(By.ID,"modal").get_attribute("hidden")
