@@ -44,6 +44,22 @@ button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e9ffa
  #touchMove{bottom:286px;transform:scale(.78);transform-origin:left bottom}
  #status{bottom:100px;max-height:140px;overflow:auto}
 }
+
+/* Live ecosystem field scanner — compact panels that do not obscure gameplay. */
+.sonar-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center;gap:20px}
+.sonar-map{display:block;width:100%;height:auto;max-height:320px;border:1px solid #456b69;border-radius:16px;box-shadow:inset 0 0 25px #0005}
+.sonar-data{min-width:0;padding:12px 0;color:#e0f1e4}.sonar-data h3{font-size:22px;letter-spacing:.03em;margin:8px 0}
+.sonar-data small{font-size:11px;line-height:1.7;color:#b6d0ca}
+.sonar-bars{display:flex;flex-direction:column;gap:10px;margin:17px 0}
+.sonar-species{display:grid;grid-template-columns:70px 1fr 49px;align-items:center;gap:10px;font-size:12px}
+.sonar-species .contract-track{margin:0}.sonar-species b{font-variant-numeric:tabular-nums;text-align:right;font-size:11px;color:#bfe4be}
+.sonar-spots{display:flex;flex-wrap:wrap;gap:9px;margin-top:10px}
+.sonar-spot{flex:1;min-width:116px;padding:12px 9px;background:#1a3939;color:#d8eee3;border:1px solid #426260;border-radius:11px;font-size:12px}
+.sonar-spot.selected{border-color:#c8eab4;background:#2b4a3e;color:#e6ffd5}
+.field-stats{font-size:12px;padding:10px 14px;color:#d6f1c8;border:1px solid #405e54;border-radius:11px;margin-bottom:10px}
+.field-row{display:grid;grid-template-columns:1fr 2fr 1.4fr;gap:10px;align-items:center;padding:11px 0;border-bottom:1px solid rgba(224,243,228,.1);font-size:12px}
+.field-row span{color:#deece3}.field-row small{color:#9fb9b2;text-align:right;line-height:1.6}
+@media(max-width:620px){.sonar-layout{grid-template-columns:1fr}.sonar-map{max-height:265px}.sonar-data{padding:0}.field-row{grid-template-columns:1fr 1.7fr}.field-row small{grid-column:1/-1;text-align:left}}
 </style>
 </head>
 <body>
@@ -52,7 +68,7 @@ button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e9ffa
 <div id="hud" hidden>
   <div class="topbar">
     <div class="brand"><span class="brand-mark">W</span><div><strong>WILDLANDS <span style="color:var(--accent)">NEXT</span></strong><small>山野钓行 / ALPINE FISHING RESERVE</small></div></div>
-    <div class="toptools"><span class="top-meta" id="clock">06:30 · 晴</span><button class="glass-btn" id="weather">天气</button><button class="glass-btn" id="daytime">时段</button><button class="glass-btn" id="location">钓点</button><button class="glass-btn" id="contracts">湖泊委托</button><button class="glass-btn" id="journal">图鉴</button><button class="glass-btn" id="shop">装备</button></div>
+    <div class="toptools"><span class="top-meta" id="clock">06:30 · 晴</span><button class="glass-btn" id="weather">天气</button><button class="glass-btn" id="daytime">时段</button><button class="glass-btn" id="location">探鱼图</button><button class="glass-btn" id="contracts">湖泊委托</button><button class="glass-btn" id="journal">图鉴 / 日志</button><button class="glass-btn" id="shop">装备</button></div>
   </div>
   <div id="event"><span class="eyebrow">LAKE VISTA · 钓点 01</span><strong id="eventTitle">薄雾在山谷间缓缓散开</strong><span id="eventText">观察湖面鱼群，把饵送到合适的水域。</span></div>
   <div id="aim"><span class="aim-ring"></span><span id="aimText">观察湖面 · 确认落点</span></div>
