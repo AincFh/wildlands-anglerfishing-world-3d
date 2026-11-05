@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {makeFishModel} from './world/fishModel.js';
+import {BAITS, baitStock, selectedBait, buyBait, consumeBait, waitForBite, chooseSpecies} from './sim/bait.mjs';
 
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -24,8 +25,8 @@ const GEAR=[
  {name:'APEX 钛合金旗舰',price:5800,drag:1.65,reel:1.68,range:1.42}
 ];
 const KEY='wildlands-next-2026';
-const firstSave=()=>({coins:1200,catches:0,best:0,gear:0,owned:[0],collection:{},location:0});
-function load(){try{const v=JSON.parse(localStorage.getItem(KEY)||'null');if(!v||typeof v!=='object')return firstSave();return {...firstSave(),...v,collection:typeof v.collection==='object'&&v.collection?v.collection:{},owned:Array.isArray(v.owned)?v.owned:[0]}}catch{return firstSave()}}
+const firstSave=()=>({coins:1200,catches:0,best:0,gear:0,owned:[0],collection:{},location:0,bait:0,baitStock:{1:0,2:0,3:0}});
+function load(){try{const v=JSON.parse(localStorage.getItem(KEY)||'null');if(!v||typeof v!=='object')return firstSave();const stock=baitStock(v.baitStock);return {...firstSave(),...v,collection:typeof v.collection==='object'&&v.collection?v.collection:{},owned:Array.isArray(v.owned)?v.owned:[0],baitStock:stock,bait:selectedBait(v.bait,stock)}}catch{return firstSave()}}
 const FISHING_ROD='https://cdn.3dassets.dev/assets/22406/v1/model.glb';
 function cylinderBetween(a,b,r0,r1,material,segments=8){
  const len=a.distanceTo(b),geo=new THREE.CylinderGeometry(r1,r0,len,segments);
@@ -67,7 +68,7 @@ function makeBobber(){
 export function createAngler(world){
  const scene=world.scene,camera=world.camera;
  const ui=(id)=>document.getElementById(id);
- const state={phase:'ready',power:0,charging:false,reeling:false,elapsed:0,castT:0,waitT:0,biteT:0,distance:0,tension:.2,stress:0,slack:0,stamina:1,drag:.55,fish:null,weight:0,location:0,worldX:0,worldZ:0,started:false,model:'carbon-fiber'};
+ const state={phase:'ready',power:0,charging:false,reeling:false,elapsed:0,castT:0,waitT:0,biteT:0,distance:0,tension:.2,stress:0,slack:0,stamina:1,drag:.55,fish:null,weight:0,location:0,worldX:0,worldZ:0,started:false,model:'carbon-fiber',activeBait:0};
  let saveData=load(),totalTime=0,toastTimer=null;
  state.location=clamp(saveData.location|0,0,2);
  scene.add(camera); // first-person rod stays in the camera's local coordinate system
@@ -115,7 +116,7 @@ export function createAngler(world){
    if(!AC)return;const c=sound.ctx||(sound.ctx=new AC());const osc=c.createOscillator(),gain=c.createGain();
    osc.type='sine';osc.frequency.setValueAtTime(freq,c.currentTime);gain.gain.setValueAtTime(.013,c.currentTime);
    gain.gain.exponentialRampToValueAtTime(.001,c.currentTime+len);osc.connect(gain).connect(c.destination);osc.start();osc.stop(c.currentTime+len)}catch{}}
- function updateFunds(){ui('funds').textContent='金币 '+saveData.coins.toLocaleString()+' · 鱼获 '+saveData.catches}
+ function updateFunds(){ui('funds').textContent='金币 '+saveData.coins.toLocaleString()+' · 鱼获 '+saveData.catches;const b=BAITS[saveData.bait];const n=saveData.bait===0?'∞':(saveData.baitStock[saveData.bait]||0);if(ui('baitHud'))ui('baitHud').textContent='当前饵料 '+b.name+' · '+n+' 份 · 装备中可购买补充' }
  function setPhase(v){state.phase=v;state.elapsed=0;state.charging=false;state.reeling=false;ui('fight').hidden=v!=='fighting';
   const labels={ready:'抛竿',charging:'蓄力',flying:'抛投中',waiting:'收回',bite:'提竿!',fighting:'收线',caught:'继续',failed:'重试'};
   ui('cast').textContent=labels[v]||'抛竿';ui('controlHelp').textContent={
@@ -176,19 +177,28 @@ export function createAngler(world){
   tip.set(.15,.25,-2.15);rodPivot.localToWorld(tip);from.copy(tip);
   target.set(aim.x,0,aim.z);
   state.worldX=target.x;state.worldZ=target.z;state.depth=aim.depth;
+  state.activeBait=selectedBait(saveData.bait,saveData.baitStock);
   state.castT=0;setPhase('flying');bobber.group.visible=true;line.visible=true;
   bobber.group.position.copy(from);
   hint('鱼饵飞行中',aim.travel.toFixed(1)+' 米抛投 · 观察落点','松开镜头操作，让鱼漂自然入水');
   playCue('cast');sound(280,.10);
  }
  function beginWaiting(){
-  setPhase('waiting');state.waitT=4+Math.random()*7;state.biteT=2.6;hint('等待鱼讯','鱼漂已经入水','注意鱼漂突然下沉时，按空格或点击提竿');
-  event('鱼漂已落在湖面','稍作等待，也可以点击“收回”重新选择落点。');playCue('splash');sound(170,.14);
+  // Consume a premium lure ONLY when the bobber reaches the water. Invalid
+  // casts never spend bait; swapping equipment after the cast cannot change
+  // that cast's species distribution.
+  const used=consumeBait(saveData.baitStock,state.activeBait);
+  state.activeBait=used.id;saveData.baitStock=used.stock;
+  if(saveData.bait!==0&&!(used.stock[saveData.bait]>0))saveData.bait=0;
+  store();updateFunds();
+  setPhase('waiting');state.waitT=waitForBite(state.activeBait,Math.random());state.biteT=2.6;
+  hint('等待鱼讯',BAITS[state.activeBait].name+' 已入水 · 观察鱼漂','鱼漂突然下沉时，按空格或点击提竿');
+  event('鱼漂已落在湖面','已使用 '+BAITS[state.activeBait].name+'，钓点与深浅会影响鱼种。');playCue('splash');sound(170,.14);
  }
  function hook(){
-  if(state.phase!=='bite')return;const rank=Math.random();
-  let idx=Math.floor(Math.random()*4);if(rank>.77)idx=4+Math.floor(Math.random()*2);if(rank>.94)idx=6+Math.floor(Math.random()*2);
-  state.fish=SPECIES[idx];state.weight=+(lerp(state.fish.min,state.fish.max,Math.pow(Math.random(),1.7))).toFixed(2);
+  if(state.phase!=='bite')return;
+  const idx=chooseSpecies({bait:state.activeBait,depth:state.depth,location:state.location,random:Math.random()});
+  state.fish=SPECIES[idx];state.weight=+(Math.min(state.fish.max,lerp(state.fish.min,state.fish.max,Math.pow(Math.random(),1.7))*BAITS[state.activeBait].weight)).toFixed(2);
   state.distance=21+state.power*30;state.tension=.16;state.stamina=1;state.stress=0;state.slack=0;
   setPhase('fighting');hint('搏鱼中','根据张力调整泄力并收线','按住空格/按钮收线 · 张力过高及时松开');
   event('鱼已上钩 · '+state.fish.name,state.fish.en+' · 注意鱼线张力，防止断线！');
@@ -225,10 +235,27 @@ export function createAngler(world){
    const bought=saveData.owned.includes(i),selected=saveData.gear===i;
    return '<article class="item"><b>'+g.name+'</b><small>抗拉 ×'+g.drag.toFixed(2)+' · 收线 ×'+g.reel.toFixed(2)+' · 远投 ×'+g.range.toFixed(2)+'</small><button data-gear="'+i+'" '+(selected||!bought&&saveData.coins<g.price?'disabled':'')+'>'+(selected?'已装备':bought?'装备':'购买 · '+g.price.toLocaleString()+' 金币')+'</button></article>';
   }).join('');
-  openModal('渔具装备 · '+saveData.coins.toLocaleString()+' 金币','<div class="catalog">'+cards+'</div>');
+  const lures=BAITS.map((b,i)=>{
+   const count=i===0?'无限':(saveData.baitStock[i]||0)+' 份';
+   const equipped=saveData.bait===i,available=i===0||(saveData.baitStock[i]||0)>0;
+   return '<article class="item"><b>'+b.name+' · '+b.en+'</b><small>'+b.detail+'</small><small>咬钩速度 ×'+(1/b.wait).toFixed(2)+' · 库存 '+count+'</small>'+
+     '<button data-bait-equip="'+i+'" '+(equipped||!available?'disabled':'')+'>'+(equipped?'已装备':'选择饵料')+'</button>'+
+     (i===0?'':'<button data-bait-buy="'+i+'" '+(saveData.coins<b.price?'disabled':'')+'>购买 '+b.pack+' 份 · '+b.price+' 金币</button>')+'</article>';
+  }).join('');
+  openModal('装备与饵料 · '+saveData.coins.toLocaleString()+' 金币',
+    '<h3 class="catalog-title">FISHING RODS / 钓竿</h3><div class="catalog">'+cards+'</div>'+
+    '<h3 class="catalog-title">BAIT & ECOLOGY / 饵料 · 水域生态</h3><div class="catalog">'+lures+'</div>');
   document.querySelectorAll('[data-gear]').forEach(btn=>btn.onclick=()=>{
     const i=+btn.dataset.gear,g=GEAR[i];if(!saveData.owned.includes(i)){if(saveData.coins<g.price)return;
     saveData.coins-=g.price;saveData.owned.push(i)}saveData.gear=i;store();updateFunds();shop();toast('已装备 '+g.name)});
+  document.querySelectorAll('[data-bait-buy]').forEach(btn=>btn.onclick=()=>{
+    const i=+btn.dataset.baitBuy,tx=buyBait(saveData.coins,saveData.baitStock,i);
+    if(!tx.ok)return;saveData.coins=tx.coins;saveData.baitStock=tx.stock;
+    store();updateFunds();shop();toast('购入 '+BAITS[i].name+' · '+BAITS[i].pack+' 份')});
+  document.querySelectorAll('[data-bait-equip]').forEach(btn=>btn.onclick=()=>{
+    const i=+btn.dataset.baitEquip;
+    if(selectedBait(i,saveData.baitStock)!==i)return;
+    saveData.bait=i;store();updateFunds();shop();toast('已选择 '+BAITS[i].name)});
  }
  function journal(){
   const cards=SPECIES.map(f=>{const saved=saveData.collection[f.name];
@@ -383,6 +410,7 @@ export function createAngler(world){
   phase:state.phase,started:state.started,model:state.model,power:state.power,
   distance:state.distance,tension:state.tension,coins:saveData.coins,catches:saveData.catches,
   rodCount:rodPivot.children.length,trophyVisible:state.phase==='caught'&&fishModel.group.visible,fish3DMeshes:fishModel.group.children.length,bobberVisible:bobber.group.visible,
-  lineVisible:line.visible,fish:state.fish?.name||null,location:state.location
+  lineVisible:line.visible,fish:state.fish?.name||null,location:state.location,
+  bait:saveData.bait,baitName:BAITS[saveData.bait].name,activeBait:state.activeBait,baitStock:{...saveData.baitStock}
  }),debug:{forceBite(){if(state.phase==='waiting'){state.waitT=0}},forceFish(){if(state.phase==='bite')hook()},forceCatch(){if(state.phase==='fighting'){state.distance=1;state.stamina=0}},setCoins(n){saveData.coins=n;store();updateFunds()}}};
 }
