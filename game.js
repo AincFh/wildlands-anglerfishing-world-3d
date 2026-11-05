@@ -39,7 +39,7 @@ const POINTS=[
  {name:'白桦隐湾',short:'BIRCH COVE',pos:[-178,-2],yaw:.85,pitch:-.09,desc:'白桦树与芦苇环绕的隐蔽水湾。'},
  {name:'岬角礁岸',short:'CLIFF POINT',pos:[182,-5],yaw:-.79,pitch:-.11,desc:'深水与裸露岩壁交错，常有大鱼出没。'}
 ];
-const SAVEKEY='wildlands_angler_v1';let data={money:1200,level:1,xp:0,catches:0,weight:0,best:0,rod:0,lure:0,ownedRods:[0],ownedLures:[0],gallery:{},quest:0,point:0,dayTime:6.7,quality:.86,music:false};
+const SAVEKEY='wildlands_angler_v1';let data={money:1200,level:1,xp:0,catches:0,weight:0,best:0,rod:0,lure:0,ownedRods:[0],ownedLures:[0],gallery:{},quest:0,point:0,dayTime:6.7,quality:1,music:false};
 try{let val=JSON.parse(localStorage.getItem(SAVEKEY)||'null');if(val&&typeof val==='object'){data={...data,...val};data.gallery=val.gallery&&typeof val.gallery==='object'?val.gallery:{};data.ownedRods=Array.isArray(val.ownedRods)?val.ownedRods:[0];data.ownedLures=Array.isArray(val.ownedLures)?val.ownedLures:[0]}}catch(e){}
 const save=()=>{try{localStorage.setItem(SAVEKEY,JSON.stringify(data))}catch(e){}};
 const state={started:false,panel:'',phase:'ready',power:0,chargeStart:0,elapsed:0,biteDelay:0,biteWindow:0,castTimer:0,castLength:1.22,castStart:[0,0,0],castTarget:[0,0,0],bobber:[0,0,0],fish:null,weight:0,length:0,stamina:1,tension:.2,stress:0,slack:0,distance:0,reeling:false,shake:0,boat:false,boatYaw:0,boatSpeed:0,boatX:-22,boatZ:22,fishSchool:[],quality:.86,fps:0};
@@ -84,6 +84,28 @@ function ellipsoid(m,x,y,z,rx,ry,rz,col=COL.stone,mat=3,lat=6,lon=9){for(let j=0
 function cylinder(m,x,y,z,r,h,col=COL.wood,seg=8,r2=r,mat=2){for(let i=0;i<seg;i++){let a=i*TAU/seg,b=(i+1)*TAU/seg,p=[x+Math.cos(a)*r,y,z+Math.sin(a)*r],q=[x+Math.cos(b)*r,y,z+Math.sin(b)*r],t=[x+Math.cos(b)*r2,y+h,z+Math.sin(b)*r2],u=[x+Math.cos(a)*r2,y+h,z+Math.sin(a)*r2];quad(m,p,q,t,u,col,mat);tri(m,[x,y+h,z],u,t,col,mat)}}
 function link(m,a,b,r,col=COL.wood,mat=2,seg=5){let dir=b.map((v,i)=>v-a[i]),L=Math.hypot(...dir)||1;dir=dir.map(v=>v/L);let help=Math.abs(dir[1])<.97?[0,1,0]:[1,0,0];const cross=(u,v)=>[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];let v=cross(dir,help),n=Math.hypot(...v);v=v.map(x=>x/n);let w=cross(dir,v);let at=(p,ang)=>p.map((x,i)=>x+r*(Math.cos(ang)*v[i]+Math.sin(ang)*w[i]));for(let i=0;i<seg;i++){let A=i*TAU/seg,B=(i+1)*TAU/seg;quad(m,at(a,A),at(a,B),at(b,B),at(b,A),col,mat)}}
 function billboard(m,x,y,z,w,h,type=5,shade=1,turn=0){let col=[shade,shade,shade];for(let angle of [turn,turn+Math.PI/2]){let dx=Math.cos(angle)*w*.5,dz=Math.sin(angle)*w*.5;let A=[x-dx,y,z-dz],B=[x+dx,y,z+dz],C=[x+dx,y+h,z+dz],D=[x-dx,y+h,z-dz];quad(m,A,B,C,D,col,type);quad(m,B,A,D,C,col,type)}}
+// Subtle ground cover: asymmetric layered conifer crowns built as real 3D geometry.
+// Only near and medium-distance trees use the heavier meshes; far forest remains batched billboards.
+function sculptPine(m,x,z,h,variant=0){
+ const y=terrainHeight(x,z),rot=R(0,TAU),seed=rand(),width=h*(.22+seed*.06),rings=variant?8:10,sides=8;
+ cylinder(m,x,y,z,h*.016,h*.78,[.22,.19,.15],6,h*.010,3);
+ for(let j=0;j<rings;j++){
+  const t=j/rings,Y=y+h*(.19+t*.70),radius=width*Math.pow(1.-t,.90)*(1+.14*Math.sin(t*32.+seed*7));
+  for(let k=0;k<sides;k++){
+   const ang=rot+k*TAU/sides+(j%2)*.14,a2=ang+TAU/sides;
+   const shade=.72+.28*Math.sin((k+variant*3+j)*2.3),c=variant?[.24*shade,.36*shade,.27*shade]:[.13*shade,.34*shade,.24*shade];
+   const r1=radius*(.84+.24*Math.sin(k*5.3+j*1.2)),r2=radius*(.84+.20*Math.cos(k*3.7-j));
+   const A=[x+Math.cos(ang)*r1,Y,z+Math.sin(ang)*r1],B=[x+Math.cos(a2)*r2,Y+.11*h/rings,z+Math.sin(a2)*r2];
+   const tip=[x+Math.cos(ang+.31)*radius*.26,Y+h*.115,z+Math.sin(ang+.31)*radius*.26];
+   tri(m,A,B,tip,c,3);tri(m,tip,B,A,c,3);
+  }
+ }
+ const peak=[x,y+h,z];for(let k=0;k<sides;k++){
+  const a=rot+k*TAU/sides,b=rot+(k+1)*TAU/sides;
+  tri(m,[x+Math.cos(a)*h*.034,y+h*.86,z+Math.sin(a)*h*.034],
+  [x+Math.cos(b)*h*.034,y+h*.86,z+Math.sin(b)*h*.034],peak,[.17,.40,.28],3);
+ }
+}
 function terrainNormal(x,z){let h=.9;let nx=terrainHeight(x-h,z)-terrainHeight(x+h,z),nz=terrainHeight(x,z-h)-terrainHeight(x,z+h),s=Math.hypot(nx,2*h,nz);return [nx/s,2*h/s,nz/s]}
 function addTent(m,x,z){let y=terrainHeight(x,z)+.2;let A=[x-3,y,z-2.2],B=[x+3,y,z-2.2],C=[x,y+3.1,z-2.2],D=[x-3,y,z+2.2],E=[x+3,y,z+2.2],F=[x,y+3.1,z+2.2];quad(m,A,D,F,C,[.24,.36,.30],3);quad(m,F,E,B,C,[.32,.44,.34],3);tri(m,A,B,C,[.15,.27,.24],3);tri(m,D,F,E,[.13,.26,.22],3);tri(m,[x-1.35,y,z+2.22],[x+1.35,y,z+2.22],F,[.13,.18,.14],3);link(m,C,F,.06,COL.dark,3);for(let j of [-1,1])for(let k of [-1,1]){let xx=x+j*3.2,zz=z+k*2.9;link(m,[xx,y-.03,zz],[x+j*2,y+1.1,z+k*1.6],.026,COL.cream,3)}}
 function buildCabin(m,x,z){let ground=terrainHeight(x,z),y=Math.max(ground,.9);if(ground<0){for(let xx of [-6.8,6.8])for(let zz of [-5,5])cylinder(m,x+xx,-5,z+zz,.45,y+5,COL.wood,7,.4,2);box(m,x,y-.13,z,18,.4,16,COL.wood,2)}const roofY=y+9.5;
@@ -149,13 +171,24 @@ function buildScene(){let s=WORLD.solid,f=WORLD.foliage,w=WORLD.water;s.length=f
  // High alpine valley mountain monoliths behind the lake.
  for(let i=0;i<0;i++){let x=R(-370,370),z=R(-453,-338),y=terrainHeight(x,z),r=R(18,37),h=R(14,42);let top=[x+R(-4,4),y+h,z+R(-4,4)];for(let j=0;j<10;j++){let a=j*TAU/10,b=(j+1)*TAU/10;tri(s,[x+Math.cos(a)*r,y-5,z+Math.sin(a)*r],[x+Math.cos(b)*r,y-5,z+Math.sin(b)*r],top,choose([[.61,.66,.63],[.47,.53,.53],[.38,.47,.46]]),1)}}
  // Forest edge; standable clearing around camp; far trees are alpha-cutout textured cards.
- for(let i=0;i<1900;i++){
+ for(let i=0;i<2350;i++){
  let x=R(-350,350),z=R(-395,190),y=terrainHeight(x,z);if(y<.4||y>105)continue;
  if(Math.hypot((x+12)*1.0,(z-73)*1.0)<25||Math.hypot(x+51,z-24)<19||Math.abs(x)<11&&z>0&&z<90)continue;
- let h=R(5,17)*(y>38?.77:1),ww=h*R(.40,.67);
+ let h=R(8,28)*(y>38?.73:1),ww=h*R(.37,.53);
  if(rand()<.12&&y<22)billboard(f,x,y,z,ww*1.2,h*.88,6,R(.84,1.08),R(-.8,.8));
  else billboard(f,x,y,z,ww,h,5,R(.75,1.03),R(-.8,.8));
  if(i%6===0&&Math.hypot(x-cam.x,z-cam.z)<140)cylinder(s,x,y,z,h*.029,h*.27,COL.trunk,5,h*.020,3);
+ }
+ // Volumetric grove that creates actual parallax, lighting and depth while walking.
+ // Favor shore contour and the foreground path rather than spraying every tree over the landscape.
+ for(let i=0;i<260;i++){
+   let a=R(0,TAU),rad=R(28,172),x=-12+Math.cos(a)*rad,z=43+Math.sin(a)*rad,y=terrainHeight(x,z);
+   if(y<.8||y>62||Math.hypot(x+12,z-48)<26||Math.hypot(x+54,z-72)<26)continue;
+   sculptPine(s,x,z,R(9,24)*(y>30?.80:1),rand()>.74?1:0);
+ }
+ for(let i=0;i<230;i++){
+   let a=R(0,TAU),r=R(18,48),x=-65+Math.cos(a)*r,z=-28+Math.sin(a)*r,y=terrainHeight(x,z);
+   if(y>.7&&y<47)sculptPine(s,x,z,R(9,20),1);
  }
  // Carefully placed foreground grove silhouettes — near, medium and distant layers.
  for(let [x,z,h,type] of [[-46,43,25,5],[55,38,21,5],[-66,-7,19,5],[-80,-19,15,6],[-95,25,17,5],[72,-2,23,5],[94,35,19,6],[105,-23,22,5],[-108,-67,18,6],[137,-47,16,5],[-42,-49,14,6],[53,-54,12,5]]){
@@ -167,6 +200,14 @@ function buildScene(){let s=WORLD.solid,f=WORLD.foliage,w=WORLD.water;s.length=f
   if(y<-.4||y>26||Math.hypot(x+12,z-73)<9)continue;
   let r=R(.3,1.6)*((rand()<.10)?2.4:1);
   ellipsoid(s,x,y+.07,z,r,r*R(.37,.8),r*R(.5,1.1),choose([COL.stone,COL.rock,[.54,.53,.45],[.35,.42,.41]]),1,4,6)
+ }
+ // Fallen timber and close-up rock clusters add scale cues in the near field.
+ for(let i=0;i<115;i++){
+    const x=R(-120,110),z=R(-28,135),y=terrainHeight(x,z);
+    if(y<.25||y>30||Math.hypot(x+12,z-73)<12)continue;
+    let a=R(0,TAU),len=R(1.6,5.6);
+    if(rand()<.46)link(s,[x,y+.20,z],[x+Math.cos(a)*len,y+.14,z+Math.sin(a)*len],R(.11,.25),[.32,.28,.20],3,7);
+    else ellipsoid(s,x,y+.10,z,R(.45,1.5),R(.2,.7),R(.35,1.0),[.33,.38,.33],1,5,7);
  }
  // dense meadow / reeds near exposed near shore. Each sways in shader via vUV.
  for(let i=0;i<1350;i++){
@@ -229,7 +270,7 @@ layout(location=1)in vec3 aNorm;
 layout(location=2)in vec2 aUV;
 layout(location=3)in vec3 aColor;
 layout(location=4)in float aMat;
-uniform vec3 uCam;uniform float uYaw,uPitch,uAspect,uFov,uClock;
+uniform vec3 uCam;uniform float uYaw,uPitch,uAspect,uFov,uClock,uMirror;
 out vec3 vWorld,vNormal,vColor;out vec2 vUV;flat out int vMat;out float vDepth;
 void main(){
  vec3 pos=aPos;vMat=int(aMat+.1);
@@ -241,7 +282,7 @@ void main(){
  vec3 up=cross(right,forward);
  vec3 p=pos-uCam;float depth=dot(p,forward);
  float f=1./tan(uFov*.5);float nz=depth*(1200.0+.11)/(1200.0-.11)-2.*1200.*.11/(1200.0-.11);
- gl_Position=vec4(dot(p,right)*f/uAspect,dot(p,up)*f,nz,depth);
+ gl_Position=vec4(dot(p,right)*f/uAspect,dot(p,up)*f*(1.-2.*uMirror),nz,depth);
  vDepth=depth;vWorld=pos;vNormal=aNorm;vUV=aUV;vColor=aColor;
 }`;
 const sceneFS=`#version 300 es
@@ -251,27 +292,45 @@ uniform sampler2D uForest,uRock,uWood,uPine,uBirch,uMeadow;
 uniform vec3 uCam;uniform float uHour,uClock;
 void main(){
  vec3 albedo=vColor;float alpha=1.;
- if(vMat==0){vec3 soil=texture(uForest,vUV).rgb;vec3 rock=texture(uRock,vUV*.78).rgb;float pitch=clamp(1.-vNormal.y,0.,1.);float pebble=smoothstep(-.15,3.6,vWorld.y);albedo*=mix(rock*.95,soil*.83,pitch<.34?.86-pebble*.14:.26);}
- else if(vMat==1){vec3 rock=texture(uRock,vUV*1.55).rgb;albedo*=rock*.95;}
+ if(vMat==0||vMat==1){
+  vec3 n=abs(normalize(vNormal));vec3 blend=pow(n,vec3(4.));blend/=max(dot(blend,vec3(1.)),.001);
+  vec3 rX=texture(uRock,vWorld.zy*.090).rgb;
+  vec3 rY=texture(uRock,vWorld.xz*.095).rgb;
+  vec3 rZ=texture(uRock,vWorld.xy*.090).rgb;
+  vec3 rock=rX*blend.x+rY*blend.y+rZ*blend.z;
+  vec3 leaf=texture(uForest,vWorld.xz*.072).rgb;
+  float slope=smoothstep(.14,.77,1.-normalize(vNormal).y);
+  float alpine=smoothstep(27.,100.,vWorld.y);
+  vec3 forest=leaf*vec3(.74,.97,.69);
+  vec3 stone=rock*vec3(.77,.83,.78);
+  albedo=mix(forest,stone,clamp(slope*.91+alpine*.18,0.,1.));
+  float groundOcc=clamp(.87+vNormal.y*.13,.55,1.);
+  albedo*=groundOcc;
+ }
  else if(vMat==2){albedo*=texture(uWood,vUV*.64+vWorld.xz*.035).rgb*1.35;}
  else if(vMat==5){vec4 p=texture(uPine,vUV);if(p.a<.22)discard;albedo*=p.rgb;}
  else if(vMat==6){vec4 p=texture(uBirch,vUV);if(p.a<.22)discard;albedo*=p.rgb;}
  else if(vMat==7){vec4 p=texture(uMeadow,vUV);if(p.a<.23)discard;albedo*=p.rgb;}
- vec3 n=normalize(vNormal),sunDir=normalize(vec3(.40,.70,-.56));
- float light=max(dot(n,sunDir),0.),ambient=.52+.2*n.y;
- if(vMat==5||vMat==6||vMat==7){ambient=.70;light=.29;}
- vec3 col=albedo*(ambient+light*.76);
- float d=length(vWorld-uCam);float fog=1.-exp(-pow(d/420.,1.6));
- vec3 fogTint=mix(vec3(.23,.42,.42),vec3(.43,.57,.53),clamp((vWorld.y+12.)/120.,0.,1.));
- col=mix(col,fogTint,fog*.77);
- col=col/(col+vec3(.29));col=pow(col,vec3(1.02));
+ vec3 n=normalize(vNormal),sunDir=normalize(vec3(.39,.73,-.43));
+ float day=smoothstep(5.1,7.9,uHour)*(1.-smoothstep(17.3,20.4,uHour));
+ float diff=max(dot(n,sunDir),0.);
+ float sky=.27+.27*max(n.y,0.);
+ float bounce=.13+.12*max(-n.y,0.);
+ if(vMat==5||vMat==6||vMat==7){sky=.39;diff=.38;}
+ vec3 sunColor=mix(vec3(1.0,.54,.29),vec3(1.0,.91,.70),day);
+ vec3 col=albedo*(vec3(.54,.67,.72)*(sky+bounce)+sunColor*diff*(.78+.22*day));
+ // Height-sensitive aerial perspective preserves close-up contrast and hazes the distant ridges.
+ float d=length(vWorld-uCam);float fog=1.-exp(-pow(max(d-17.,0.)/570.,1.48));
+ vec3 fogTint=mix(vec3(.27,.39,.40),vec3(.53,.64,.61),clamp((vWorld.y+10.)/140.,0.,1.));
+ col=mix(col,fogTint,fog*.75);
+ col=col/(col+vec3(.13));col=pow(col,vec3(.94));
  frag=vec4(col,alpha);
 }`;
 const waterFS=`#version 300 es
 precision highp float;
 in vec3 vWorld,vNormal,vColor;in vec2 vUV;flat in int vMat;in float vDepth;out vec4 frag;
-uniform sampler2D uNormals,uCaustics;
-uniform vec3 uCam;uniform float uClock,uHour;
+uniform sampler2D uNormals,uCaustics,uReflection;
+uniform vec3 uCam;uniform float uClock,uHour;uniform vec2 uViewport;uniform float uHasReflection;
 void main(){
  vec2 p=vWorld.xz;
  vec2 uv1=p*.022+vec2(uClock*.008,uClock*.005),uv2=p*.029-vec2(uClock*.004,uClock*.006);
@@ -282,22 +341,43 @@ void main(){
  float depth=length(vWorld-uCam);
  float d=sqrt((p.x/225.)*(p.x/225.)+((p.y+140.)/160.)*((p.y+140.)/160.));
  float shallow=smoothstep(.94,1.10,d);
- vec3 deep=vec3(.020,.145,.175),bank=vec3(.075,.25,.235),reflection=vec3(.31,.45,.44);
- vec3 water=mix(deep,bank,shallow);
- water=mix(water,reflection,fres*.64);
+ vec3 deep=vec3(.016,.115,.155),bank=vec3(.075,.22,.19),reflection=vec3(.32,.49,.51);
+ vec3 water=mix(deep,bank,shallow*.69);
+ vec2 screenUV=gl_FragCoord.xy/uViewport;
+ vec2 perturb=(n1.xy+n2.xy)*(.007+.008*fres);
+ vec3 reflected=texture(uReflection,clamp(screenUV+perturb,vec2(.003),vec2(.997))).rgb;
+ // Reflect mountain silhouette and forest on high quality settings; keep a cheap fallback on mobile.
+ reflected=mix(reflection,reflected,uHasReflection);
+ water=mix(water,reflected,clamp(.27+fres*.65,0.,.88));
  float sparkle=pow(max(dot(reflect(-normalize(vec3(.40,.70,-.56)),N),V),0.),130.);
  water+=vec3(.99,.88,.60)*sparkle*2.5;
  float ripple=sin(p.x*.75+uClock*2.1)*sin(p.y*.51-uClock*1.4);
- water+=ripple*.006;
+ water+=ripple*.011;
+ float caps=sin(p.x*.18+uClock*.84)*cos(p.y*.32-uClock*1.2);
+ water+=vec3(.019,.036,.033)*(caps*.5+.5);
  float foam=smoothstep(.970,1.007,d)*(1.-smoothstep(1.007,1.045,d));
  foam*=.40+.3*sin(p.x*.25+uClock*1.8+p.y*.27);
  water=mix(water,vec3(.80,.91,.80),clamp(foam,0.,.5));
  float fog=1.-exp(-pow(depth/310.,1.6));water=mix(water,vec3(.25,.45,.47),fog*.57);
- water=water/(water+vec3(.20));frag=vec4(pow(water,vec3(.92)),1.);
+ water=water/(water+vec3(.12));frag=vec4(pow(water,vec3(.93)),1.);
 }`;
 function compile(type,src){const sh=gl.createShader(type);gl.shaderSource(sh,src);gl.compileShader(sh);if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS))throw new Error('GLSL error: '+gl.getShaderInfoLog(sh));return sh}
 function program(v,f){const p=gl.createProgram();gl.attachShader(p,compile(gl.VERTEX_SHADER,v));gl.attachShader(p,compile(gl.FRAGMENT_SHADER,f));gl.linkProgram(p);if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error('GL program: '+gl.getProgramInfoLog(p));return p}
-let programs={};let models={};let textures={};
+let programs={};let models={};let textures={};let reflection={fbo:null,color:null,depth:null,width:0,height:0};
+function resizeReflection(w,h){
+ w=Math.max(128,Math.min(1120,Math.floor(w*.62)));h=Math.max(96,Math.min(720,Math.floor(h*.62)));
+ if(reflection.fbo&&w===reflection.width&&h===reflection.height)return;
+ if(reflection.fbo){gl.deleteFramebuffer(reflection.fbo);gl.deleteTexture(reflection.color);gl.deleteRenderbuffer(reflection.depth)}
+ reflection.width=w;reflection.height=h;reflection.fbo=gl.createFramebuffer();reflection.color=gl.createTexture();reflection.depth=gl.createRenderbuffer();
+ gl.bindTexture(gl.TEXTURE_2D,reflection.color);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+ gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+ gl.bindRenderbuffer(gl.RENDERBUFFER,reflection.depth);gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT16,w,h);
+ gl.bindFramebuffer(gl.FRAMEBUFFER,reflection.fbo);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,reflection.color,0);
+ gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,reflection.depth);
+ if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE)throw Error('Reflection target incomplete');
+ gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+}
 function uniforms(p,names){let r={};for(let n of names)r[n]=gl.getUniformLocation(p,n);return r}
 function makeModel(list,usage=gl.STATIC_DRAW){let vao=gl.createVertexArray(),buffer=gl.createBuffer();gl.bindVertexArray(vao);gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(list),usage);let stride=12*4;for(let [index,size,offset] of [[0,3,0],[1,3,3],[2,2,6],[3,3,8],[4,1,11]]){gl.enableVertexAttribArray(index);gl.vertexAttribPointer(index,size,gl.FLOAT,false,stride,offset*4)}gl.bindVertexArray(null);return {vao,buffer,count:list.length/12}}
 function refreshDynamic(){if(!models.dynamic){models.dynamic=makeModel(WORLD.dynamic,gl.DYNAMIC_DRAW)}else{gl.bindBuffer(gl.ARRAY_BUFFER,models.dynamic.buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(WORLD.dynamic),gl.DYNAMIC_DRAW);models.dynamic.count=WORLD.dynamic.length/12}}
@@ -305,24 +385,43 @@ function uploadModels(){for(let name of ['solid','foliage','water']){if(models[n
 function loadTexture(name,file,repeat=true){let t=gl.createTexture();textures[name]=t;gl.bindTexture(gl.TEXTURE_2D,t);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([145,165,153,255]));gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,repeat?gl.REPEAT:gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,repeat?gl.REPEAT:gl.CLAMP_TO_EDGE);gl.generateMipmap(gl.TEXTURE_2D);let img=new Image();img.crossOrigin='anonymous';img.onload=()=>{gl.bindTexture(gl.TEXTURE_2D,t);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);gl.generateMipmap(gl.TEXTURE_2D);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false)};img.onerror=()=>console.warn('Missing texture asset:',file);img.src=window.WILDLANDS_MEDIA[file]||'assets/'+file}
 function initGPU(){
  programs.sky={p:program(fullscreenVS,skyFS)};programs.sky.u=uniforms(programs.sky.p,['uClock','uYaw','uPitch','uHour','uAspect','uCloud']);
- programs.scene={p:program(sceneVS,sceneFS)};programs.scene.u=uniforms(programs.scene.p,['uCam','uYaw','uPitch','uAspect','uFov','uClock','uHour','uForest','uRock','uWood','uPine','uBirch','uMeadow']);
- programs.water={p:program(sceneVS,waterFS)};programs.water.u=uniforms(programs.water.p,['uCam','uYaw','uPitch','uAspect','uFov','uClock','uHour','uNormals','uCaustics']);
+ programs.scene={p:program(sceneVS,sceneFS)};programs.scene.u=uniforms(programs.scene.p,['uCam','uYaw','uPitch','uAspect','uFov','uClock','uMirror','uHour','uForest','uRock','uWood','uPine','uBirch','uMeadow']);
+ programs.water={p:program(sceneVS,waterFS)};programs.water.u=uniforms(programs.water.p,['uCam','uYaw','uPitch','uAspect','uFov','uClock','uMirror','uHour','uNormals','uCaustics','uReflection','uViewport','uHasReflection']);
  loadTexture('forest','forest_floor.jpg');loadTexture('rock','granite_cliff.jpg');loadTexture('wood','weathered_timber.jpg');loadTexture('normals','water_normals.png');loadTexture('caustics','lake_caustics.jpg');loadTexture('pine','pine.png',false);loadTexture('birch','birch.png',false);loadTexture('meadow','meadow.png',false);loadTexture('cloud','cloud_noise.png');
  buildScene();uploadModels();gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.disable(gl.CULL_FACE);gl.clearColor(.3,.5,.55,1);
 }
 function useTexture(unit,name,loc){gl.activeTexture(gl.TEXTURE0+unit);gl.bindTexture(gl.TEXTURE_2D,textures[name]);gl.uniform1i(loc,unit)}
-function cameraUniforms(obj){let u=obj.u;gl.uniform3f(u.uCam,cam.x,cam.y,cam.z);gl.uniform1f(u.uYaw,cam.yaw);gl.uniform1f(u.uPitch,cam.pitch);gl.uniform1f(u.uAspect,canvas.width/canvas.height);gl.uniform1f(u.uFov,1.04);gl.uniform1f(u.uClock,clock);gl.uniform1f(u.uHour,data.dayTime)}
+function cameraUniforms(obj,mirror=false){let u=obj.u;gl.uniform3f(u.uCam,cam.x,mirror?-cam.y:cam.y,cam.z);gl.uniform1f(u.uYaw,cam.yaw);gl.uniform1f(u.uPitch,mirror?-cam.pitch:cam.pitch);if(u.uMirror)gl.uniform1f(u.uMirror,mirror?1:0);gl.uniform1f(u.uAspect,canvas.width/canvas.height);gl.uniform1f(u.uFov,1.04);gl.uniform1f(u.uClock,clock);gl.uniform1f(u.uHour,data.dayTime)}
 function draw(model){if(!model||!model.count)return;gl.bindVertexArray(model.vao);gl.drawArrays(gl.TRIANGLES,0,model.count);}
 function renderWorld(){
- const {width,height}=canvas;gl.viewport(0,0,width,height);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.depthMask(true);gl.disable(gl.DEPTH_TEST);
+ const {width,height}=canvas;
+ if(!reflection.color)resizeReflection(width,height);
+ const highReflection=state.quality>.72 && (state.fps>=22||state.fps===0);
+ let sc=programs.scene,wa=programs.water;
+ // Offscreen planar mirror. Uses mirrored camera; avoids a static painted reflection.
+ if(highReflection){
+  resizeReflection(width,height);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,reflection.fbo);gl.viewport(0,0,reflection.width,reflection.height);
+  gl.clearColor(.40,.57,.61,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);gl.disable(gl.BLEND);
+  gl.useProgram(sc.p);cameraUniforms(sc,true);
+  for(let [j,n] of ['forest','rock','wood','pine','birch','meadow'].entries())useTexture(j,n,sc.u['u'+n[0].toUpperCase()+n.slice(1)]);
+  draw(models.solid);draw(models.foliage);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+ }
+ gl.viewport(0,0,width,height);gl.clearColor(.24,.40,.44,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+ gl.depthMask(true);gl.disable(gl.DEPTH_TEST);
  let sk=programs.sky;gl.useProgram(sk.p);gl.uniform1f(sk.u.uClock,clock);gl.uniform1f(sk.u.uYaw,cam.yaw);gl.uniform1f(sk.u.uPitch,cam.pitch);gl.uniform1f(sk.u.uHour,data.dayTime);gl.uniform1f(sk.u.uAspect,width/height);useTexture(0,'cloud',sk.u.uCloud);gl.drawArrays(gl.TRIANGLES,0,3);
  gl.enable(gl.DEPTH_TEST);
- let sc=programs.scene;gl.useProgram(sc.p);cameraUniforms(sc);for(let [j,n] of ['forest','rock','wood','pine','birch','meadow'].entries())useTexture(j,n,sc.u['u'+n[0].toUpperCase()+n.slice(1)]);
+ gl.useProgram(sc.p);cameraUniforms(sc);
+ for(let [j,n] of ['forest','rock','wood','pine','birch','meadow'].entries())useTexture(j,n,sc.u['u'+n[0].toUpperCase()+n.slice(1)]);
  draw(models.solid);
- let wa=programs.water;gl.useProgram(wa.p);cameraUniforms(wa);useTexture(0,'normals',wa.u.uNormals);useTexture(1,'caustics',wa.u.uCaustics);draw(models.water);
- gl.useProgram(sc.p);cameraUniforms(sc);for(let [j,n] of ['forest','rock','wood','pine','birch','meadow'].entries())useTexture(j,n,sc.u['u'+n[0].toUpperCase()+n.slice(1)]);
- draw(models.foliage);draw(models.dynamic);
- gl.bindVertexArray(null);
+ gl.useProgram(wa.p);cameraUniforms(wa);useTexture(0,'normals',wa.u.uNormals);useTexture(1,'caustics',wa.u.uCaustics);
+ gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,reflection.color);gl.uniform1i(wa.u.uReflection,2);
+ gl.uniform2f(wa.u.uViewport,width,height);gl.uniform1f(wa.u.uHasReflection,highReflection?1:0);draw(models.water);
+ gl.useProgram(sc.p);cameraUniforms(sc);
+ for(let [j,n] of ['forest','rock','wood','pine','birch','meadow'].entries())useTexture(j,n,sc.u['u'+n[0].toUpperCase()+n.slice(1)]);
+ draw(models.foliage);draw(models.dynamic);gl.bindVertexArray(null);
 }
 function viewDir(){return [Math.sin(cam.yaw)*Math.cos(cam.pitch),Math.sin(cam.pitch),-Math.cos(cam.yaw)*Math.cos(cam.pitch)]}
 function rodAnimation(){let M=WORLD.dynamic;const f=viewDir(),right=[Math.cos(cam.yaw),0,Math.sin(cam.yaw)],p=(forward,side,up)=>[cam.x+f[0]*forward+right[0]*side,cam.y+up+f[1]*forward,cam.z+f[2]*forward+right[2]*side];
@@ -513,7 +612,7 @@ function initInputs(){window.addEventListener('keydown',e=>keyboard(e,true));win
  for(let id of ['tcast','tspace']){let b=$('#'+id);b.addEventListener('pointerdown',e=>{e.preventDefault();startAction()});for(let ev of ['pointerup','pointercancel'])b.addEventListener(ev,e=>{e.preventDefault();releaseAction()})}
  window.addEventListener('resize',resize);
 }
-function loop(ms){requestAnimationFrame(loop);let dt=clamp((ms-lastFrame)/1000,.001,.07);lastFrame=ms;clock+=dt;state.elapsed+=dt;drawCount++;drawSec+=dt;if(drawSec>1){state.fps=Math.round(drawCount/drawSec);drawCount=0;drawSec=0;if(state.fps<16&&state.started&&qualityAdjust<2){state.quality=Math.max(.53,state.quality*.81);resize();qualityAdjust++}}
+function loop(ms){requestAnimationFrame(loop);let dt=clamp((ms-lastFrame)/1000,.001,.07);lastFrame=ms;clock+=dt;state.elapsed+=dt;drawCount++;drawSec+=dt;if(drawSec>1){state.fps=Math.round(drawCount/drawSec);drawCount=0;drawSec=0;if(state.fps<14&&state.started&&qualityAdjust<2){state.quality=Math.max(.53,state.quality*.81);resize();qualityAdjust++}}
  if(state.started){updateCamera(dt);if(!state.panel&&!$('#catchOverlay').classList.contains('open'))updateFishing(dt);animateFish(dt);if((uiTimer+=dt)>.1){updateHUD();uiTimer=0}}
  makeDynamic();renderWorld();
 }
