@@ -3,6 +3,7 @@
    state machine; scene inspection/debug handle exposed for browser smoke tests. */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import {makeFishModel} from './world/fishModel.js';
 
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -62,14 +63,6 @@ function makeBobber(){
  mesh.rotation.x=-Math.PI/2;mesh.position.y=-.085-i*.005;group.add(mesh);rings.push(mesh)}
  return {group,rings};
 }
-function makeFishModel(){
- const g=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:0x839b89,metalness:.18,roughness:.43});
- const body=new THREE.Mesh(new THREE.SphereGeometry(.56,24,14),mat);body.scale.set(.42,.21,1.1);g.add(body);
- const tail=new THREE.Mesh(new THREE.ConeGeometry(.22,.48,5),mat);
- tail.rotation.x=Math.PI/2;tail.position.z=.68;g.add(tail);
- const fin=new THREE.Mesh(new THREE.ConeGeometry(.20,.35,4),mat);fin.rotation.z=Math.PI;fin.position.y=.20;g.add(fin);
- return {group:g,material:mat};
-}
 
 export function createAngler(world){
  const scene=world.scene,camera=world.camera;
@@ -125,7 +118,7 @@ export function createAngler(world){
  }
  function beginCharge(){
   if(!state.started||!ui('modal').hidden||!ui('intro').hidden)return;
-  if(state.phase==='ready'||state.phase==='caught'||state.phase==='failed'){setPhase('charging');state.power=.03;state.charging=true;hint('蓄力中','控制合适的抛投力度','松开空格或抛竿按钮，鱼饵将飞向湖面');sound(360,.035)}
+  if(state.phase==='ready'||state.phase==='caught'||state.phase==='failed'){if(fishModel.group.parent===camera){scene.add(fishModel.group);fishModel.group.visible=false;fishModel.group.scale.setScalar(1)}setPhase('charging');state.power=.03;state.charging=true;hint('蓄力中','控制合适的抛投力度','松开空格或抛竿按钮，鱼饵将飞向湖面');sound(360,.035)}
   else if(state.phase==='bite')hook();
   else if(state.phase==='fighting')state.reeling=true;
   else if(state.phase==='waiting')reset();
@@ -169,12 +162,19 @@ export function createAngler(world){
   saveData.coins+=payout;saveData.catches++;saveData.best=Math.max(saveData.best,state.weight);
   const entry=saveData.collection[fish.name]||{count:0,best:0};
   entry.count++;entry.best=Math.max(entry.best,state.weight);saveData.collection[fish.name]=entry;
-  store();setPhase('caught');fishModel.group.visible=false;bobber.group.visible=false;line.visible=false;
+  store();setPhase('caught');bobber.group.visible=false;line.visible=false;
+  // Present the actual animated 3D fish in a cinematic first-person
+  // trophy reveal, instead of text-only capture results.
+  camera.add(fishModel.group);
+  fishModel.group.position.set(-.38,-.16,-2.9);
+  fishModel.group.rotation.set(.03,1.22,0);
+  fishModel.group.scale.setScalar(.94);
+  fishModel.group.visible=true;
   hint('成功上岸','捕获 '+fish.name+' · '+state.weight.toFixed(2)+' kg','获得 '+payout+' 枚金币 · 点击继续');
   event('完美上岸 · '+fish.name,'重量 '+state.weight.toFixed(2)+' kg · 奖励 '+payout+' 金币');updateFunds();sound(970,.3);
   toast('收获 '+fish.name+' '+state.weight.toFixed(2)+' kg！');
  }
- function reset(){bobber.group.visible=false;fishModel.group.visible=false;line.visible=false;state.fish=null;setPhase('ready');
+ function reset(){bobber.group.visible=false;fishModel.group.visible=false;scene.add(fishModel.group);fishModel.group.scale.setScalar(1);line.visible=false;state.fish=null;setPhase('ready');
   hint('准备抛投','寻找水面波纹，选择抛投力度','WASD 沿湖岸移动 · 拖动环顾 · 空格蓄力')}
  function adjustDrag(n){state.drag=clamp(state.drag+n,.2,.90);ui('drag').textContent='泄力 '+Math.round(state.drag*100)+'%';sound(460,.035)}
  function openModal(title,html){const pane=ui('modal');ui('modalTitle').textContent=title;ui('modalBody').innerHTML=html;pane.hidden=false}
@@ -246,6 +246,12 @@ export function createAngler(world){
   totalTime+=dt;state.elapsed+=dt;
   if(!state.started)return;
   walk(dt);
+  if(state.phase==='caught'&&fishModel.group.parent===camera){
+    fishModel.group.rotation.y=1.22+Math.sin(totalTime*.7)*.18;
+    fishModel.group.rotation.z=Math.sin(totalTime*1.3)*.045;
+    fishModel.group.position.y=-.12+Math.sin(totalTime*1.6)*.055;
+    if(state.elapsed>7)fishModel.group.visible=false;
+  }
   const sway=(state.phase==='charging'?.31:state.phase==='fighting'?Math.sin(totalTime*7)*.13:.03*Math.sin(totalTime*1.5));
   rodPivot.rotation.x=lerp(rodPivot.rotation.x,-sway,clamp(dt*6));
   rodPivot.rotation.z=lerp(rodPivot.rotation.z,state.phase==='fighting'?Math.sin(totalTime*13)*.033:0,clamp(dt*8));
@@ -305,7 +311,7 @@ export function createAngler(world){
  return {state,update,viewLocation,reset,beginCharge,endCharge,getState:()=>({
   phase:state.phase,started:state.started,model:state.model,power:state.power,
   distance:state.distance,tension:state.tension,coins:saveData.coins,catches:saveData.catches,
-  rodCount:rodPivot.children.length,bobberVisible:bobber.group.visible,
+  rodCount:rodPivot.children.length,trophyVisible:state.phase==='caught'&&fishModel.group.visible,fish3DMeshes:fishModel.group.children.length,bobberVisible:bobber.group.visible,
   lineVisible:line.visible,fish:state.fish?.name||null,location:state.location
  }),debug:{forceBite(){if(state.phase==='waiting'){state.waitT=0}},forceFish(){if(state.phase==='bite')hook()},forceCatch(){if(state.phase==='fighting'){state.distance=1;state.stamina=0}},setCoins(n){saveData.coins=n;store();updateFunds()}}};
 }
