@@ -204,6 +204,7 @@ export function createAngler(world){
   state.distance=21+state.power*30;state.tension=.16;state.stamina=1;state.stress=0;state.slack=0;
   setPhase('fighting');hint('搏鱼中','根据张力调整泄力并收线','按住空格/按钮收线 · 张力过高及时松开');
   event('鱼已上钩 · '+state.fish.name,state.fish.en+' · 注意鱼线张力，防止断线！');
+  fishModel.setSpecies(idx);fishModel.animate(totalTime,.92);
   fishModel.material.color.setHex(state.fish.color);fishModel.group.visible=true;sound(780,.16);
  }
  function fail(message){
@@ -368,6 +369,7 @@ export function createAngler(world){
       aim.reason;
   }
   if(state.phase==='caught'&&fishModel.group.parent===camera){
+    fishModel.animate(totalTime,.24);
     fishModel.group.rotation.y=1.22+Math.sin(totalTime*.7)*.18;
     fishModel.group.rotation.z=Math.sin(totalTime*1.3)*.045;
     fishModel.group.position.y=-.12+Math.sin(totalTime*1.6)*.055;
@@ -409,7 +411,10 @@ export function createAngler(world){
      bobber.group.position.z=state.worldZ+Math.cos(totalTime*.77)*clamp(state.distance*.09,0,3);
      bobber.group.position.y=-.2+Math.sin(totalTime*4)*.09;
      fishModel.group.position.set(bobber.group.position.x, -.62+Math.sin(totalTime*1.6)*.1,bobber.group.position.z);
-     fishModel.group.rotation.y+=dt*2.9;fishModel.group.rotation.z=Math.sin(totalTime*8)*.13;
+     // Swim and fight rather than spinning the entire fish like a propeller.
+     fishModel.animate(totalTime,Math.min(1,.66+burst*.32));
+     fishModel.group.rotation.y=Math.sin(totalTime*.79)*.34;
+     fishModel.group.rotation.z=Math.sin(totalTime*1.15)*.065;
      const tensionPct=Math.round(state.tension*100);
      ui('tensionFill').style.width=Math.min(100,tensionPct)+'%';ui('tensionNum').textContent=tensionPct+'%';
      ui('distance').textContent=state.distance.toFixed(1)+' m';
@@ -432,9 +437,10 @@ export function createAngler(world){
  return {state,update,viewLocation,reset,beginCharge,endCharge,getState:()=>({
   phase:state.phase,started:state.started,model:state.model,power:state.power,
   distance:state.distance,tension:state.tension,coins:saveData.coins,catches:saveData.catches,
-  rodCount:rodPivot.children.length,trophyVisible:state.phase==='caught'&&fishModel.group.visible,fish3DMeshes:fishModel.group.children.length,bobberVisible:bobber.group.visible,
+  rodCount:rodPivot.children.length,trophyVisible:state.phase==='caught'&&fishModel.group.visible,fish3DMeshes:fishModel.meshCount,bobberVisible:bobber.group.visible,
   lineVisible:line.visible,fish:state.fish?.name||null,location:state.location,
   bait:saveData.bait,baitName:BAITS[saveData.bait].name,activeBait:state.activeBait,baitStock:{...saveData.baitStock},
-  contractsReady:availableClaims(saveData.contracts,saveData.catches),contractsCompleted:CONTRACTS.filter(job=>saveData.contracts.claimed[job.id]).length
+  contractsReady:availableClaims(saveData.contracts,saveData.catches),contractsCompleted:CONTRACTS.filter(job=>saveData.contracts.claimed[job.id]).length,
+  fishShape:fishModel.getShape().label,fishTailYaw:fishModel.getPose().tailYaw,fishRigScale:{x:fishModel.rig.scale.x,y:fishModel.rig.scale.y,z:fishModel.rig.scale.z}
  }),debug:{forceBite(){if(state.phase==='waiting'){state.waitT=0}},forceFish(){if(state.phase==='bite')hook()},forceCatch(){if(state.phase==='fighting'){state.distance=1;state.stamina=0}},setCoins(n){saveData.coins=n;store();updateFunds()}}};
 }
