@@ -87,13 +87,28 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         assert not driver.find_element(By.ID,"modal").get_attribute("hidden")
         driver.save_screenshot(str(ARTIFACTS / "07-equipment.png"))
         driver.find_element(By.ID, "close").click()
+        driver.set_window_size(390, 844)
+        time.sleep(.8)
+        mobile=driver.execute_script("""(() => {
+            const rect=id=>{const r=document.getElementById(id).getBoundingClientRect();
+              return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};
+            return {width:innerWidth,height:innerHeight,
+              movement:getComputedStyle(document.getElementById('touchMove')).display,
+              pad:rect('touchMove'),status:rect('status'),cast:rect('cast'),
+              horizontalOverflow:document.documentElement.scrollWidth>innerWidth};
+          })()""")
+        assert mobile["movement"] == "grid", mobile
+        assert mobile["cast"]["x"] >= 0 and mobile["cast"]["right"] <= mobile["width"], mobile
+        assert mobile["pad"]["bottom"] < mobile["status"]["y"], mobile
+        assert not mobile["horizontalOverflow"], mobile
+        driver.save_screenshot(str(ARTIFACTS / "08-mobile-controls.png"))
         errors=[entry["message"] for entry in driver.get_log("browser")
                  if entry["level"] == "SEVERE" and "favicon" not in entry["message"]]
         # Third-party optional GLB may be blocked in some test regions; the
         # procedural rod fallback is supported. Otherwise block console errors.
         core_errors=[msg for msg in errors if not ("22406/v1/model.glb" in msg or "net::ERR" in msg)]
         assert not core_errors, "Severe browser JS or WebGL errors: "+str(core_errors[:15])
-        report={"scene":world,"ready":ready,"caught":caught,"errors":errors}
+        report={"scene":world,"ready":ready,"caught":caught,"mobile":mobile,"errors":errors}
         (ARTIFACTS/"report.json").write_text(json.dumps(report,ensure_ascii=False,indent=2))
         print(json.dumps(report,ensure_ascii=False,indent=2))
     finally:
