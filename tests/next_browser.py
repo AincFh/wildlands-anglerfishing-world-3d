@@ -58,6 +58,8 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         driver.save_screenshot(str(ARTIFACTS / "02-lake-and-rod.png"))
         cast = driver.find_element(By.ID, "cast")
         ActionChains(driver).move_to_element(cast).click_and_hold().pause(.8).release().perform()
+        # Software GPU frames are slow; advance the deterministic casting animation explicitly.
+        driver.execute_script("if(window.__wildlandsNext.getState().phase==='flying') window.__wildlandsNext.angler.update(1.0)")
         for _ in range(12):
             time.sleep(.4)
             phase=driver.execute_script("return window.__wildlandsNext.getState().phase")
