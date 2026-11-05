@@ -1,0 +1,27 @@
+name: Visual WebGL smoke
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Selenium
+        run: python -m pip install selenium==4.37.0
+      - name: Verify actual WebGL scene and cast interaction
+        run: python tests/browser_smoke.py
+      - name: Preserve visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-visual-proof
+          path: test-artifacts/
+          if-no-files-found: ignore
