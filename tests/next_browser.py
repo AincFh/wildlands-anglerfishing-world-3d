@@ -112,8 +112,7 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
             phase=driver.execute_script("return window.__wildlandsNext.getState().phase")
             if phase=="waiting":break
         assert phase=="waiting", f"Expected floating bobber, got {phase}"
-        assert driver.execute_script("return window.__wildlandsNext.getState().fishSchools.bait"),
-          "Submerged bait must attract actual lake swimmers"
+        assert driver.execute_script("return window.__wildlandsNext.getState().fishSchools.bait"), "Submerged bait must attract actual lake swimmers"
         assert driver.execute_script("return window.__wildlandsNext.getState().bobberVisible")
         driver.save_screenshot(str(ARTIFACTS / "03-float.png"))
         driver.execute_script("window.__wildlandsNext.test.forceBite();window.__wildlandsNext.angler.update(.12)")
