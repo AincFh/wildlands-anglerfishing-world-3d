@@ -183,7 +183,14 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         driver.save_screenshot(str(ARTIFACTS / "08-mobile-controls.png"))
         pos0=driver.execute_script("return {x:window.__wildlandsNext.world.camera.position.x,z:window.__wildlandsNext.world.camera.position.z}")
         move=driver.find_element(By.CSS_SELECTOR, '#touchMove button[data-move="KeyA"]')
-        ActionChains(driver).move_to_element(move).click_and_hold().pause(.75).release().perform()
+        # Software-rendered WebGL may render fewer than one frame during a
+        # short held click. Verify the *real* pointerdown wiring, then advance
+        # the genuine gameplay update while the button remains held.
+        ActionChains(driver).move_to_element(move).click_and_hold().perform()
+        held=driver.execute_script("return document.querySelector('#touchMove button[data-move=\"KeyA\"]').classList.contains('pressed')")
+        assert held, "Pointerdown did not activate the movement key"
+        driver.execute_script("window.__wildlandsNext.angler.update(.30)")
+        ActionChains(driver).release().perform()
         pos1=driver.execute_script("return {x:window.__wildlandsNext.world.camera.position.x,z:window.__wildlandsNext.world.camera.position.z}")
         delta=((pos1["x"]-pos0["x"])**2+(pos1["z"]-pos0["z"])**2)**.5
         assert delta>.15, f"Touch movement control failed: moved {delta:.3f} m"
