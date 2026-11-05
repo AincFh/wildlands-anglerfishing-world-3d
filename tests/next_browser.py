@@ -81,6 +81,15 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         driver.find_element(By.ID, "cast").click()
         time.sleep(.3)
         assert driver.execute_script("return window.__wildlandsNext.getState().phase")=="fighting"
+        # Real-world Three.js mesh uses independent tail and fin hinges, with
+        # an anatomical silhouette that differs by species. A snapshot alone
+        # cannot prove animation, so advance the actual gameplay clock.
+        pose0=driver.execute_script("return window.__wildlandsNext.getState()")
+        driver.execute_script("window.__wildlandsNext.angler.update(.21)")
+        pose1=driver.execute_script("return window.__wildlandsNext.getState()")
+        assert pose1["fish3DMeshes"]>=40 and pose1["fishShape"], pose1
+        assert abs(pose1["fishTailYaw"]-pose0["fishTailYaw"])>.0005, (pose0,pose1)
+        assert pose1["fishRigScale"]["z"]>.6,pose1
         driver.save_screenshot(str(ARTIFACTS / "05-fight.png"))
         driver.execute_script("window.__wildlandsNext.test.forceCatch();window.__wildlandsNext.angler.update(.12)")
         time.sleep(.35)
