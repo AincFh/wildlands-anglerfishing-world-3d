@@ -1,6 +1,7 @@
 """Real Chromium/WebGL smoke for the next-generation cinematic fishing preview.
 Captures the title, lake, bite, fight and equipment states. No mocked engine."""
 import json
+import os
 import pathlib
 import socketserver
 import threading
@@ -12,12 +13,14 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+SITE_ROOT = ROOT / "dist" if os.environ.get("NEXT_TEST_RELEASE") == "1" else ROOT
+assert (SITE_ROOT / "next" / "index.html").is_file()
 ARTIFACTS = ROOT / "test-artifacts" / "next"
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(ROOT), **kwargs)
+        super().__init__(*args, directory=str(SITE_ROOT), **kwargs)
     def log_message(self, *args): pass
 
 with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
@@ -54,6 +57,17 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
           .map(r=>r.name).filter(u=>/three\.module|three\.core|GLTFLoader|BufferGeometryUtils|OrbitControls/.test(u))""")
         assert any("/next/vendor/three/build/three.module.js" in x for x in modules), modules
         assert not any("cdn.jsdelivr.net" in x for x in modules), modules
+        if os.environ.get("NEXT_TEST_RELEASE") == "1":
+            # Prove that all first-party ESM fetches use THIS release's
+            # revision, not stale modules from the previous GitHub Pages build.
+            rev=driver.execute_script("""return {
+                entry:document.querySelector('script[type="module"]')?.getAttribute('src'),
+                modules:performance.getEntriesByType('resource').map(r=>r.name)
+                    .filter(u=>u.includes('/next/src/')&&/\.(?:js|mjs)(\?|$)/.test(u))
+            }""")
+            assert "?v=" in rev["entry"],rev
+            assert len(rev["modules"])>=12,rev
+            assert all("?v=" in url for url in rev["modules"]),rev
         world=driver.execute_script("return window.__wildlandsNext.getState()")
         assert world["treeCount"] > 100, world
         assert world["shoreDetails"]["grass"] > 200 and world["shoreDetails"]["rocks"] > 50, world
