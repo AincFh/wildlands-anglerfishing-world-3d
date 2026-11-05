@@ -127,17 +127,40 @@ export function createAngler(world){
   if(state.phase==='charging'){state.charging=false;cast()}
   else if(state.phase==='fighting')state.reeling=false;
  }
+ function projectAim(power=state.power){
+  // Calculate an actual line/surface intersection. Never teleport an
+  // invalid cast to the middle of the lake when looking back at the forest.
+  const dir=new THREE.Vector3();camera.getWorldDirection(dir);dir.y=0;
+  if(dir.lengthSq()<.0001)return {ok:false,reason:'请面向湖泊'};
+  dir.normalize();
+  const b=camera.position.x*dir.x+camera.position.z*dir.z;
+  const c=camera.position.x**2+camera.position.z**2-54.5**2;
+  const discriminant=b*b-c;
+  if(b>=0||discriminant<=.01)return {ok:false,reason:'请转向水面'};
+  const root=Math.sqrt(discriminant);
+  const entry=-b-root,exit=-b+root;
+  const requested=(14+39*clamp(power,.03,1))*GEAR[saveData.gear].range;
+  if(requested<entry+1.5)return {ok:false,reason:'需要增加抛投力度'};
+  const travel=Math.min(requested,exit-1.5);
+  if(travel<entry+1.5)return {ok:false,reason:'角度太偏，请调整朝向'};
+  const x=camera.position.x+dir.x*travel,z=camera.position.z+dir.z*travel;
+  return {ok:true,x,z,travel,depth:Math.max(0,1-Math.hypot(x,z)/54.5)};
+ }
  function cast(){
   if(state.phase!=='charging')return;
+  const aim=projectAim();
+  if(!aim.ok){
+   setPhase('ready');hint('抛投方向无效',aim.reason,'拖动镜头对准湖面后重新蓄力');toast(aim.reason);sound(200,.10);
+   return;
+  }
   camera.updateWorldMatrix(true,false);rodPivot.updateWorldMatrix(true,false);
   tip.set(.15,.25,-2.15);rodPivot.localToWorld(tip);from.copy(tip);
-  const dir=new THREE.Vector3();camera.getWorldDirection(dir);dir.y=0;dir.normalize();
-  const reach=(14+39*state.power)*GEAR[saveData.gear].range;
-  target.set(camera.position.x+dir.x*reach,0,camera.position.z+dir.z*reach);
-  const radial=Math.hypot(target.x,target.z);if(radial>55){target.x*=55/radial;target.z*=55/radial}
-  state.worldX=target.x;state.worldZ=target.z;
+  target.set(aim.x,0,aim.z);
+  state.worldX=target.x;state.worldZ=target.z;state.depth=aim.depth;
   state.castT=0;setPhase('flying');bobber.group.visible=true;line.visible=true;
-  bobber.group.position.copy(from);hint('鱼饵飞行中','观察落点和水面波纹','松开镜头操作，让鱼漂自然入水');sound(280,.10);
+  bobber.group.position.copy(from);
+  hint('鱼饵飞行中',aim.travel.toFixed(1)+' 米抛投 · 观察落点','松开镜头操作，让鱼漂自然入水');
+  sound(280,.10);
  }
  function beginWaiting(){
   setPhase('waiting');state.waitT=4+Math.random()*7;state.biteT=2.6;hint('等待鱼讯','鱼漂已经入水','注意鱼漂突然下沉时，按空格或点击提竿');
@@ -246,6 +269,16 @@ export function createAngler(world){
   totalTime+=dt;state.elapsed+=dt;
   if(!state.started)return;
   walk(dt);
+  const aimMarker=ui('aim');
+  const showingAim=state.phase==='ready'||state.phase==='charging';
+  aimMarker.style.opacity=showingAim?'.86':'0';
+  if(showingAim){
+    const aim=projectAim(state.phase==='charging'?state.power:.49);
+    aimMarker.classList.toggle('bad',!aim.ok);
+    ui('aimText').textContent=aim.ok?
+      ('预计 '+aim.travel.toFixed(0)+' m · '+(aim.depth>.46?'深水':'浅滩')):
+      aim.reason;
+  }
   if(state.phase==='caught'&&fishModel.group.parent===camera){
     fishModel.group.rotation.y=1.22+Math.sin(totalTime*.7)*.18;
     fishModel.group.rotation.z=Math.sin(totalTime*1.3)*.045;
