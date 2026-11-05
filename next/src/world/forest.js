@@ -4,17 +4,29 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Rng } from '../sim/rng.js';
 
-const MAX_TREES = 720;
-const SWAY_SUBSET = 60;
+const MAX_TREES = 600;
+const SWAY_SUBSET = 42;
 
 function buildCanopyGeometry() {
-  const c1 = new THREE.ConeGeometry(1.7, 2.6, 7);
-  c1.translate(0, 3.1, 0);
-  const c2 = new THREE.ConeGeometry(1.3, 2.2, 7);
-  c2.translate(0, 4.5, 0);
-  const c3 = new THREE.ConeGeometry(0.85, 1.7, 7);
-  c3.translate(0, 5.7, 0);
-  return mergeGeometries([c1, c2, c3]);
+  // Dense irregular branch masses, not the three stacked perfect cones used
+  // by the early prototype. Built once then instanced across the forest.
+  const clusters = [];
+  for(let layer=0;layer<7;layer++){
+    const t=layer/7;
+    const radius=1.43*(1-t*.84),y=2.1+t*3.65;
+    const branches=layer<3?5:4;
+    for(let i=0;i<branches;i++){
+      const angle=i*Math.PI*2/branches+layer*.71;
+      const blob=new THREE.IcosahedronGeometry(1,0);
+      blob.scale(radius*(.43+.06*Math.sin(layer*3+i)),.31+.05*(1-t),radius*.43);
+      blob.rotateY(angle);
+      blob.translate(Math.cos(angle)*radius*.53,y+(i%2)*.09,Math.sin(angle)*radius*.53);
+      clusters.push(blob);
+    }
+  }
+  const crown=new THREE.IcosahedronGeometry(1,1);
+  crown.scale(.43,1.17,.43);crown.translate(0,5.43,0);clusters.push(crown);
+  return mergeGeometries(clusters);
 }
 
 export function createForest({ heightAt, seed = 5150 }) {
@@ -81,7 +93,7 @@ export function createForest({ heightAt, seed = 5150 }) {
 
     trunkColor.lerpColors(barkDark, bark, p.tint);
     trunks.setColorAt(i, trunkColor);
-    if (p.tint < 0.08) canopyColor.setHex(0x7d6428); // sparse amber accents
+    if (p.tint < 0.055) canopyColor.setHex(0x52673e); // muted foliage, no luminous yellow
     else if (p.tint < 0.4) canopyColor.lerpColors(deepGreen, warmGreen, (p.tint - 0.08) / 0.32);
     else canopyColor.lerpColors(warmGreen, blueSpruce, (p.tint - 0.4) / 0.6);
     canopies.setColorAt(i, canopyColor);
