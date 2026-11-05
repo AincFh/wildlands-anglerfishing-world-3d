@@ -1,7 +1,7 @@
 /* Optional CC0 realistic tree upgrade. Keeps the base forest usable offline.
  * Model © Innerscene, released CC0, source:
  * https://www.innerscene.com/tools/library/3d-parts/mature-scots-pine-tree-280307e1
- * External model loads only on network-enabled clients; failures are nonfatal.
+ * External model is opt-in (externalTrees=1) due third-party CORS restrictions.
  */
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
