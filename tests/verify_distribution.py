@@ -7,6 +7,8 @@ index = (root / "index.html").read_text(encoding="utf-8")
 game = (root / "game.js").read_text(encoding="utf-8")
 css = (root / "style.css").read_text(encoding="utf-8")
 assert 'src="game.js"' in index
+assert 'src="fight.js"' in index
+assert (root / "fight.js").is_file() and (root / "fight.js").stat().st_size > 4000
 assert 'href="style.css"' in index
 assert "WILDLANDS_MEDIA" in index and "WILDLANDS_MEDIA" in game
 for asset in sorted((root / "assets").iterdir()):

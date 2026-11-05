@@ -22,3 +22,25 @@
 .import-label{display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
 @keyframes catchRise{from{opacity:0;transform:translateY(28px) scale(.91)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(max-width:800px){.catch-artwork{height:140px}.result-content h2{font-size:38px}.fish-row .fish-shape{width:70px;min-width:70px}}
+
+/* Fish dynamics controls: compact, readable and touch-friendly */
+[hidden]{display:none!important}
+.fight-detail{border-top:1px solid rgba(204,232,204,.23);margin-top:12px;padding-top:12px;text-shadow:0 1px 9px #0005}
+.fight-detail-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:10px;letter-spacing:.07em;color:#c7dcce}
+.fight-detail-head strong{font-size:11px;letter-spacing:0;color:#f1dbad;text-align:right}
+.fish-burst-track{height:5px;background:rgba(204,230,220,.2);border-radius:8px;overflow:hidden;margin:9px 0 12px}
+.fish-burst-track i{display:block;width:0%;height:100%;border-radius:8px;background:linear-gradient(90deg,#c3d7b6,#eab68d);transition:width .17s ease}
+.fight-drag-row{display:flex;align-items:center;gap:13px;min-width:0}
+.fight-drag-row>div:first-child{display:grid;gap:3px;min-width:85px}
+.fight-drag-row small{display:block;color:#c2d4c8;font-size:9px}
+.fight-drag-row b{font-size:17px;color:#f6e4b8}
+.drag-buttons{display:flex;gap:7px}
+.drag-buttons button{display:grid;place-items:center;width:39px;height:37px;border-radius:9px;background:rgba(183,220,193,.16);border:1px solid rgba(222,236,217,.53);color:#f7e4bb;font-size:20px;font-weight:600;touch-action:manipulation}
+.drag-buttons button:hover{background:rgba(194,226,191,.31)}
+.drag-buttons button:active{transform:scale(.94)}
+.energy-note{margin-left:auto;font-size:9px;white-space:nowrap;color:#d8e7d8}
+.energy-note strong{font-size:11px;color:#e4d9b0}
+.fight-detail p{font-size:10px;line-height:1.7;color:#c6d9cc;margin:12px 0 4px}
+.fight-detail kbd{border:1px solid #c7dfbc7a;border-radius:4px;font-size:10px;padding:0 4px}
+@media(max-width:720px){.fight-detail-head{font-size:9px}.fight-drag-row{gap:8px}.drag-buttons button{width:43px;height:41px}.fight-detail p{font-size:9px}.energy-note{font-size:8px}}
+@media(max-width:380px){.energy-note{display:none}}
