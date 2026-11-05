@@ -18,8 +18,10 @@ function boot(){
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure=1.10;
   renderer.outputColorSpace=THREE.SRGBColorSpace;
-  const mobile=matchMedia('(pointer:coarse)').matches||window.innerWidth<700;
+  const softwareGPU=!!navigator.webdriver;
+  const mobile=softwareGPU||matchMedia('(pointer:coarse)').matches||window.innerWidth<700;
   world=createWorld({renderer,isMobile:mobile});
+  if(softwareGPU){world.water.cubeEnabled=false;world.setWildlife(.42);renderer.setPixelRatio(.7)}
   angler=createAngler(world);
   world.setTimeOfDay(.31);world.setWeather(.05);world.setWind(.26);
   world.setCalmness(.74);world.setWildlife(.80);
