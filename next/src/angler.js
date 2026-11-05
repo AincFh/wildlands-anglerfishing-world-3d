@@ -6,6 +6,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {makeFishModel} from './world/fishModel.js';
 import {BAITS, baitStock, selectedBait, buyBait, consumeBait, waitForBite, chooseSpecies} from './sim/bait.mjs';
 import {CONTRACTS, normalizeContracts, recordCatch, claimContract, availableClaims, contractUnlocked} from './sim/contracts.mjs';
+import {habitat,chooseLakeSpecies,biteSeconds,speciesForecast,SPOT_NAMES} from './sim/ecology.mjs';
+import {normalizeCatchLog,recordLanding,journalStats} from './sim/catchLog.mjs';
+import {LINE_SEGMENTS,lineCurve} from './sim/linePhysics.mjs';
 
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -26,8 +29,8 @@ const GEAR=[
  {name:'APEX 钛合金旗舰',price:5800,drag:1.65,reel:1.68,range:1.42}
 ];
 const KEY='wildlands-next-2026';
-const firstSave=()=>({coins:1200,catches:0,best:0,gear:0,owned:[0],collection:{},location:0,bait:0,baitStock:{1:0,2:0,3:0},contracts:normalizeContracts()});
-function load(){try{const v=JSON.parse(localStorage.getItem(KEY)||'null');if(!v||typeof v!=='object')return firstSave();const stock=baitStock(v.baitStock);return {...firstSave(),...v,collection:typeof v.collection==='object'&&v.collection?v.collection:{},owned:Array.isArray(v.owned)?v.owned:[0],baitStock:stock,bait:selectedBait(v.bait,stock),contracts:normalizeContracts(v.contracts)}}catch{return firstSave()}}
+const firstSave=()=>({coins:1200,catches:0,best:0,gear:0,owned:[0],collection:{},location:0,bait:0,baitStock:{1:0,2:0,3:0},contracts:normalizeContracts(),catchLog:[]});
+function load(){try{const v=JSON.parse(localStorage.getItem(KEY)||'null');if(!v||typeof v!=='object')return firstSave();const stock=baitStock(v.baitStock);return {...firstSave(),...v,collection:typeof v.collection==='object'&&v.collection?v.collection:{},owned:Array.isArray(v.owned)?v.owned:[0],baitStock:stock,bait:selectedBait(v.bait,stock),contracts:normalizeContracts(v.contracts),catchLog:normalizeCatchLog(v.catchLog)}}catch{return firstSave()}}
 const FISHING_ROD='https://cdn.3dassets.dev/assets/22406/v1/model.glb';
 function cylinderBetween(a,b,r0,r1,material,segments=8){
  const len=a.distanceTo(b),geo=new THREE.CylinderGeometry(r1,r0,len,segments);
@@ -84,10 +87,10 @@ export function createAngler(world){
  },undefined,()=>{state.model='procedural-fallback'});
  const bobber=makeBobber();scene.add(bobber.group);bobber.group.visible=false;
  const fishModel=makeFishModel();scene.add(fishModel.group);fishModel.group.visible=false;
- const geom=new THREE.BufferGeometry();const linePos=new Float32Array(4*3);
+ const geom=new THREE.BufferGeometry();const linePos=new Float32Array(LINE_SEGMENTS*3);
  geom.setAttribute('position',new THREE.BufferAttribute(linePos,3));
  const line=new THREE.Line(geom,new THREE.LineBasicMaterial({color:0xe2dfcf,transparent:true,opacity:.88,depthTest:true}));
- scene.add(line);line.visible=false;
+ scene.add(line);line.visible=false;line.frustumCulled=false;
  const temp=new THREE.Vector3(),tip=new THREE.Vector3(),from=new THREE.Vector3(),target=new THREE.Vector3();
  const ripples=bobber.rings;
  function store(){try{localStorage.setItem(KEY,JSON.stringify(saveData))}catch{}}
@@ -193,13 +196,16 @@ export function createAngler(world){
   state.activeBait=used.id;saveData.baitStock=used.stock;
   if(saveData.bait!==0&&!(used.stock[saveData.bait]>0))saveData.bait=0;
   store();updateFunds();
-  setPhase('waiting');state.waitT=waitForBite(state.activeBait,Math.random());state.biteT=2.6;
+  const conditions=world.getState();
+  state.castEnvironment={bait:state.activeBait,depth:state.depth,location:state.location,
+   timeOfDay:conditions.timeOfDay,weather:conditions.weather,wind:conditions.wind};
+  setPhase('waiting');state.waitT=biteSeconds({...state.castEnvironment,random:Math.random()});state.biteT=2.6;
   hint('等待鱼讯',BAITS[state.activeBait].name+' 已入水 · 观察鱼漂','鱼漂突然下沉时，按空格或点击提竿');
   event('鱼漂已落在湖面','已使用 '+BAITS[state.activeBait].name+'，钓点与深浅会影响鱼种。');playCue('splash');sound(170,.14);
  }
  function hook(){
   if(state.phase!=='bite')return;
-  const idx=chooseSpecies({bait:state.activeBait,depth:state.depth,location:state.location,random:Math.random()});
+  const idx=chooseLakeSpecies({...state.castEnvironment,random:Math.random()});
   state.fish=SPECIES[idx];state.weight=+(Math.min(state.fish.max,lerp(state.fish.min,state.fish.max,Math.pow(Math.random(),1.7))*BAITS[state.activeBait].weight)).toFixed(2);
   state.distance=21+state.power*30;state.tension=.16;state.stamina=1;state.stress=0;state.slack=0;
   setPhase('fighting');hint('搏鱼中','根据张力调整泄力并收线','按住空格/按钮收线 · 张力过高及时松开');
@@ -219,6 +225,10 @@ export function createAngler(world){
   entry.count++;entry.best=Math.max(entry.best,state.weight);saveData.collection[fish.name]=entry;
   const mission=recordCatch(saveData.contracts,{species:fish.name,weight:state.weight,location:state.location,bait:state.activeBait,depth:state.depth},saveData.catches);
   saveData.contracts=mission.progress;
+  const env=state.castEnvironment||world.getState();
+  saveData.catchLog=recordLanding(saveData.catchLog,{species:fish.name,weight:state.weight,
+   location:state.location,bait:state.activeBait,depth:state.depth,time:env.timeOfDay,
+   weather:env.weather,payout,number:saveData.catches});
   store();setPhase('caught');bobber.group.visible=false;line.visible=false;
   // Present the actual animated 3D fish in a cinematic first-person
   // trophy reveal, instead of text-only capture results.
@@ -265,7 +275,18 @@ export function createAngler(world){
  function journal(){
   const cards=SPECIES.map(f=>{const saved=saveData.collection[f.name];
   return '<article class="item"><b>'+f.name+'</b><small>'+f.en+' · '+f.rare+'</small><small>'+(saved?'鱼获 '+saved.count+' · 最大 '+saved.best.toFixed(2)+' kg':'尚未发现')+'</small></article>'}).join('');
-  openModal('湖泊鱼类图鉴 · '+Object.keys(saveData.collection).length+'/'+SPECIES.length,'<div class="catalog">'+cards+'</div>');
+  const notes=saveData.catchLog.slice().reverse().slice(0,20).map(x=>{
+    const minutes=Math.floor(x.time*1440),time=String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0');
+    return '<div class="field-row"><b>'+x.species+'</b><span>'+x.weight.toFixed(2)+' kg · '+SPOT_NAMES[x.location]+' · '+BAITS[x.bait].name+'</span><small>'+time+' · '+(x.weather>.68?'风雨':x.weather>.3?'多云':'晴朗')+' · '+x.payout+' 金币</small></div>';
+  }).join('');
+  const stats=journalStats(saveData.catchLog);
+  openModal('湖泊鱼类图鉴 · '+Object.keys(saveData.collection).length+'/'+SPECIES.length,
+    '<div class="catalog">'+cards+'</div>'+
+    '<h3 class="catalog-title" style="margin-top:23px">FIELD JOURNAL / 最近 20 次鱼获</h3>'+
+    '<p class="contract-intro">本地保存最近 40 条鱼获，包含钓点、饵料、天气、时段与金币。旧版鱼获计数仍会保留。</p>'+
+    '<div class="field-stats">近期 '+stats.count+' 次 · '+stats.unique+' 种鱼 · 收益 '+stats.totalEarned.toLocaleString()+' 金币</div>'+
+    (notes||'<p class="contract-intro">目前还没有垂钓记录。第一条鱼获会自动写入。</p>'));
+
  }
  function contractsMenu(){
   const progress=normalizeContracts(saveData.contracts);
@@ -286,8 +307,36 @@ export function createAngler(world){
   });
  }
  function locationMenu(){
-  const labels=['晨雾北岸 · North Bank','白桦浅湾 · Birch Cove','岬角深水 · Rocky Point'];
-  openModal('选择钓点','<div class="catalog">'+labels.map((s,i)=>'<article class="item"><b>'+s+'</b><small>不同岸线构图与鱼群视野</small><button data-spot="'+i+'">前往钓点</button></article>').join('')+'</div>');
+  const w=world.getState(),depth=[.30,.22,.72][state.location],center={x:150,y:150},scout=speciesForecast({
+   bait:saveData.bait,depth,location:state.location,timeOfDay:w.timeOfDay,weather:w.weather,wind:w.wind});
+  const environment=habitat({bait:saveData.bait,depth,location:state.location,timeOfDay:w.timeOfDay,weather:w.weather,wind:w.wind});
+  const stations=[{x:18,z:65},{x:-61,z:27},{x:57,z:-32}];
+  const circles=stations.map((spot,i)=>{
+   const x=center.x+spot.x*1.15,y=center.y+spot.z*1.15;
+   return '<g><circle cx="'+x+'" cy="'+y+'" r="'+(i===state.location?9:6)+'" fill="'+(i===state.location?'#d0f0ac':'#9acaca')+'" stroke="#06262d" stroke-width="3"/>'+
+    '<text x="'+x+'" y="'+(y-15)+'" text-anchor="middle" fill="#f1fff6" font-size="10">'+SPOT_NAMES[i]+'</text></g>';
+  }).join('');
+  const map='<svg viewBox="0 0 300 300" role="img" aria-label="山谷湖泊水深等深线与三处钓点" class="sonar-map">'+
+    '<defs><radialGradient id="lakeDepth"><stop stop-color="#133f58"/><stop offset=".57" stop-color="#25647a"/><stop offset="1" stop-color="#407d79"/></radialGradient></defs>'+
+    '<rect width="300" height="300" rx="18" fill="#112d31"/>'+
+    '<circle cx="150" cy="150" r="93" stroke="#638e78" stroke-width="26" fill="#294f4c"/>'+
+    '<circle cx="150" cy="150" r="74" fill="url(#lakeDepth)" stroke="#90c0a0" stroke-width="2"/>'+
+    '<circle cx="150" cy="150" r="56" fill="none" stroke="#b1e8ec" stroke-opacity=".24" stroke-dasharray="5 7"/>'+
+    '<circle cx="150" cy="150" r="32" fill="none" stroke="#b1e8ec" stroke-opacity=".32"/>'+
+    '<text x="150" y="146" fill="#d8eef1" font-size="10" text-anchor="middle">DEEP WATER</text>'+
+    '<text x="150" y="161" fill="#b4d5d5" font-size="10" text-anchor="middle">深水区</text>'+circles+
+    '<text x="14" y="25" fill="#c0e5d2" font-size="10" letter-spacing="2">LAKE SURVEY</text>'+
+    '<text x="285" y="25" fill="#c0e5d2" text-anchor="end" font-size="11">N ↑</text>'+
+    '</svg>';
+  const bars=scout.slice(0,5).map(x=>'<div class="sonar-species"><span>'+x.name+'</span><div class="contract-track"><span style="width:'+Math.max(3,x.percent)+'%"></span></div><b>'+x.percent.toFixed(1)+'%</b></div>').join('');
+  const controls=SPOT_NAMES.map((name,i)=>'<button class="sonar-spot'+(i===state.location?' selected':'')+'" type="button" data-spot="'+i+'">'+name+(i===state.location?' · 当前':'')+'</button>').join('');
+  openModal('湖泊探鱼仪 · '+SPOT_NAMES[state.location],
+   '<p class="contract-intro">这里展示当前时段、天气、水深和所选饵料下的鱼群出现概率。实际抛投会锁定落点水深与当时环境，鱼获按同一套生态模型生成。</p>'+
+   '<div class="sonar-layout">'+map+'<section class="sonar-data"><div class="contract-kicker">LIVE ECOLOGY / 水域预测</div>'+
+   '<h3>'+environment.conditions.period+' · '+environment.conditions.weather+'</h3>'+
+   '<small>当前饵料 '+BAITS[saveData.bait].name+' · 活动指数 '+Math.round(environment.activity*100)+'%</small>'+
+   '<div class="sonar-bars">'+bars+'</div><small>此为推荐钓点的参考深度，实际命中概率随具体落点变化。</small></section></div>'+
+   '<h3 class="catalog-title">选择岸线 / MOVE TO FISHING SPOT</h3><div class="sonar-spots">'+controls+'</div>');
   document.querySelectorAll('[data-spot]').forEach(btn=>btn.onclick=()=>{ui('modal').hidden=true;viewLocation(+btn.dataset.spot)});
  }
  ui('close').onclick=()=>ui('modal').hidden=true;
@@ -427,9 +476,9 @@ export function createAngler(world){
    const rp=rodPivot.localToWorld(temp.set(.13,.23,-2.10));
    // Swing of the elastic line, not a straight 2-point rigid tether.
    const fp=bobber.group.position;
-   const mid=rp.clone().lerp(fp,.52);mid.y-=Math.min(1.9,rp.distanceTo(fp)*.025);
-   linePos.set([rp.x,rp.y,rp.z,mid.x,mid.y,mid.z,fp.x,fp.y,fp.z,fp.x,fp.y,fp.z]);
-   geom.attributes.position.needsUpdate=true;geom.computeBoundingSphere();
+   lineCurve(rp,fp,{tension:state.phase==='fighting'?state.tension:.14,
+     wind:world.getState().wind,time:totalTime},linePos);
+   geom.attributes.position.needsUpdate=true;
    const rt=totalTime*1.25;for(let i=0;i<ripples.length;i++){ripples[i].scale.setScalar(1+((rt+i*.55)%2)*1.6);
      ripples[i].material.opacity=Math.max(0,.21-((rt+i*.55)%2)*.09)}
   }
@@ -441,6 +490,9 @@ export function createAngler(world){
   lineVisible:line.visible,fish:state.fish?.name||null,location:state.location,
   bait:saveData.bait,baitName:BAITS[saveData.bait].name,activeBait:state.activeBait,baitStock:{...saveData.baitStock},
   contractsReady:availableClaims(saveData.contracts,saveData.catches),contractsCompleted:CONTRACTS.filter(job=>saveData.contracts.claimed[job.id]).length,
+  recentCatchCount:saveData.catchLog.length,lineSegments:LINE_SEGMENTS,liveHabitat:habitat({
+    bait:saveData.bait,depth:[.30,.22,.72][state.location],location:state.location,
+    timeOfDay:world.getState().timeOfDay,weather:world.getState().weather,wind:world.getState().wind}).conditions,
   fishShape:fishModel.getShape().label,fishTailYaw:fishModel.getPose().tailYaw,fishRigScale:{x:fishModel.rig.scale.x,y:fishModel.rig.scale.y,z:fishModel.rig.scale.z}
  }),debug:{forceBite(){if(state.phase==='waiting'){state.waitT=0}},forceFish(){if(state.phase==='bite')hook()},forceCatch(){if(state.phase==='fighting'){state.distance=1;state.stamina=0}},setCoins(n){saveData.coins=n;store();updateFunds()}}};
 }
