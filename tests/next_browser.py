@@ -85,8 +85,27 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         driver.find_element(By.ID, "shop").click()
         time.sleep(.3)
         assert not driver.find_element(By.ID,"modal").get_attribute("hidden")
+        assert len(driver.find_elements(By.CSS_SELECTOR, "[data-bait-buy]"))==3
+        driver.find_element(By.CSS_SELECTOR, '[data-bait-buy="2"]').click()
+        bought=driver.execute_script("return window.__wildlandsNext.getState()")
+        assert bought["baitStock"]["2"]==6 and bought["coins"]>=0,bought
+        driver.find_element(By.CSS_SELECTOR, '[data-bait-equip="2"]').click()
+        equipped=driver.execute_script("return window.__wildlandsNext.getState()")
+        assert equipped["bait"]==2 and "银色亮片" in driver.find_element(By.ID,"baitHud").text,equipped
         driver.save_screenshot(str(ARTIFACTS / "07-equipment.png"))
         driver.find_element(By.ID, "close").click()
+        # The cast must consume ONE lure only on water; invalid air casts do
+        # not spend inventory. Keep this on the genuine gameplay path.
+        driver.execute_script("window.__wildlandsNext.angler.reset()")
+        cast=driver.find_element(By.ID,"cast")
+        ActionChains(driver).move_to_element(cast).click_and_hold().pause(.8).release().perform()
+        driver.execute_script("if(window.__wildlandsNext.getState().phase==='flying')window.__wildlandsNext.angler.update(1.0)")
+        for _ in range(18):
+            time.sleep(.35)
+            if driver.execute_script("return window.__wildlandsNext.getState().phase")=="waiting": break
+        consumed=driver.execute_script("return window.__wildlandsNext.getState()")
+        assert consumed["phase"]=="waiting" and consumed["activeBait"]==2 and consumed["baitStock"]["2"]==5,consumed
+        driver.execute_script("window.__wildlandsNext.angler.reset()")
         driver.set_window_size(390, 844)
         time.sleep(.8)
         mobile=driver.execute_script("""return (() => {
