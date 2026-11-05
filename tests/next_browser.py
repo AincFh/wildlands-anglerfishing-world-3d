@@ -67,7 +67,7 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         assert phase=="waiting", f"Expected floating bobber, got {phase}"
         assert driver.execute_script("return window.__wildlandsNext.getState().bobberVisible")
         driver.save_screenshot(str(ARTIFACTS / "03-float.png"))
-        driver.execute_script("window.__wildlandsNext.test.forceBite()")
+        driver.execute_script("window.__wildlandsNext.test.forceBite();window.__wildlandsNext.angler.update(.12)")
         time.sleep(.4)
         assert driver.execute_script("return window.__wildlandsNext.getState().phase")=="bite"
         driver.save_screenshot(str(ARTIFACTS / "04-bite.png"))
@@ -75,7 +75,7 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         time.sleep(.3)
         assert driver.execute_script("return window.__wildlandsNext.getState().phase")=="fighting"
         driver.save_screenshot(str(ARTIFACTS / "05-fight.png"))
-        driver.execute_script("window.__wildlandsNext.test.forceCatch()")
+        driver.execute_script("window.__wildlandsNext.test.forceCatch();window.__wildlandsNext.angler.update(.12)")
         time.sleep(.35)
         caught=driver.execute_script("return window.__wildlandsNext.getState()")
         assert caught["phase"]=="caught" and caught["catches"] >= 1, caught
