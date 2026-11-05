@@ -73,6 +73,13 @@ with socketserver.TCPServer(("127.0.0.1", 0), SilentHandler) as httpd:
         phase = browser.execute_script("return window.WILDLANDS.getState().phase")
         assert phase in ("casting", "waiting", "bite"), f"Fishing interaction broken: {phase}"
         browser.save_screenshot(str(ARTIFACTS / "cast-state.png"))
+        # Capture alternative forest and lakeshore compositions before selecting the spawn.
+        for label, pos in [("birch-cove", (-178, -2, .85)),
+                           ("cliff-point", (182, -5, -.79)),
+                           ("forest-camp", (-42, 72, .55))]:
+            browser.execute_script("window.WILDLANDS.test.setCamera(arguments[0],arguments[1],arguments[2])", *pos)
+            time.sleep(.8)
+            browser.save_screenshot(str(ARTIFACTS / (label + ".png")))
         errors = [entry["message"] for entry in browser.get_log("browser")
                   if entry["level"] == "SEVERE" and "favicon.ico" not in entry["message"]]
         assert not errors, "Browser console errors:\n" + "\n".join(errors[:15])
