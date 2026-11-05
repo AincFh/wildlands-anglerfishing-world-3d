@@ -9,6 +9,7 @@ import {CONTRACTS, normalizeContracts, recordCatch, claimContract, availableClai
 import {habitat,chooseLakeSpecies,biteSeconds,speciesForecast,SPOT_NAMES} from './sim/ecology.mjs';
 import {normalizeCatchLog,recordLanding,journalStats} from './sim/catchLog.mjs';
 import {LINE_SEGMENTS,lineCurve} from './sim/linePhysics.mjs';
+import {DOCKS} from './sim/boatPhysics.mjs';
 
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -74,6 +75,7 @@ export function createAngler(world){
  const ui=(id)=>document.getElementById(id);
  const state={phase:'ready',power:0,charging:false,reeling:false,elapsed:0,castT:0,waitT:0,biteT:0,distance:0,tension:.2,stress:0,slack:0,stamina:1,drag:.55,fish:null,weight:0,location:0,worldX:0,worldZ:0,started:false,model:'carbon-fiber',activeBait:0,boatMode:'shore',lastBoatStore:0};
  let saveData=load(),totalTime=0,toastTimer=null;
+ const previousBoatDistance=saveData.boatDistance;
  state.location=clamp(saveData.location|0,0,2);
  scene.add(camera); // first-person rod stays in the camera's local coordinate system
  const rodPivot=new THREE.Group();rodPivot.position.set(.46,-.60,-1.20);camera.add(rodPivot);
@@ -388,6 +390,106 @@ export function createAngler(world){
  }
  world.onCameraExit=()=>{if(ui('observeFish').getAttribute('aria-pressed')==='true')setUnderwater(false)};
  ui('observeFish').onclick=()=>setUnderwater(world.director.mode!=='underwater');
+
+ /** Dock ticket, helm control and anchored fishing all share the real
+  * world.boat state machine. A boat cannot be sold/refilled by repeated clicks.
+  */
+ function storeBoat(){
+  const vessel=world.boat.getState();
+  saveData.boatFuel=vessel.fuel;
+  saveData.boatDistance=previousBoatDistance+vessel.distance;
+  store();
+ }
+ function refreshBoatHud(){
+  const boat=world.boat.getState(),aboard=state.boatMode!=='shore',
+    nearShore=Math.hypot(boat.x,boat.z)>=45;
+  ui('boatHud').hidden=!aboard;
+  ui('boatButton').setAttribute('aria-pressed',aboard?'true':'false');
+  ui('boatButton').textContent=state.boatMode==='piloting'?'抛锚停船':
+   state.boatMode==='anchored'?'起锚航行':saveData.boatOwned?'乘船出航':'购买渔船 · 650';
+  ui('boatExit').hidden=state.boatMode!=='anchored'||!nearShore;
+  ui('boatRefuel').hidden=state.boatMode!=='anchored'||!nearShore||boat.fuel>=99.9;
+  ui('boatRefuel').textContent='加满燃油 · 95';
+  if(aboard)ui('boatHud').textContent=(state.boatMode==='piloting'?'航行中':'已抛锚')+
+   ' · '+boat.speedKmh.toFixed(1)+' km/h · 燃油 '+boat.fuel.toFixed(0)+'% · 航行 '+(previousBoatDistance+boat.distance).toFixed(1)+' m'+
+   (boat.grounded?' · 已抵达湖岸':'');
+  if(state.boatMode==='piloting'){
+   ui('cast').textContent='驾驶中';
+   ui('controlHelp').textContent='W 加速 · S 倒车 · A/D 转向 · 上方「抛锚停船」';
+  }
+ }
+ function boatButtonAction(){
+  if(!state.started||!ui('modal').hidden)return;
+  if(!['ready','caught','failed'].includes(state.phase)){
+   toast('请先完成当前鱼获再操作渔船');return;
+  }
+  if(state.boatMode==='shore'){
+   if(world.director.mode==='underwater')setUnderwater(false);
+   if(!saveData.boatOwned){
+    if(saveData.coins<650){toast('购入渔船需要 650 金币');return}
+    saveData.coins-=650;saveData.boatOwned=true;store();updateFunds();
+   }
+   if(state.phase!=='ready')reset();
+   world.boat.board(state.location,saveData.boatFuel);
+   world.setCameraMode('boat');state.boatMode='piloting';
+   rodPivot.visible=false;
+   ui('observeFish').disabled=true;
+   hint('渔船已启航','W 加速 / S 倒车 / A、D 转向','靠近目标水域后抛锚，再使用钓竿');
+   event('航行模式 · 湖泊探险','驶向鱼群更密集的水域；超过水域边界会被浅滩阻挡。');
+   toast('渔船就位 · 燃油 '+saveData.boatFuel.toFixed(0)+'%');
+  }else if(state.boatMode==='piloting'){
+   if(!world.boat.anchor()){toast('当前无法放锚');return}
+   state.boatMode='anchored';rodPivot.visible=true;
+   world.boat.setControls({});
+   setPhase('ready');
+   hint('船只已抛锚','可以从船上抛竿','实际落点沿船首方向计算 · 结束后可起锚');
+   event('静水抛锚 · 船钓开始','鱼漂从船上进入深水区，鱼种与重量仍按真实生态和水域选择。');
+   storeBoat();toast('抛锚成功 · 可以船钓');
+  }else{
+   if(state.phase!=='ready')reset();
+   if(!world.boat.resume()){toast('当前无法起锚');return}
+   state.boatMode='piloting';rodPivot.visible=false;
+   hint('恢复航行','W 加速 / S 倒车 / A、D 转向','回到水域边缘，抛锚后可返回岸上');
+   toast('已起锚 · 恢复航行');
+  }
+  refreshBoatHud();
+ }
+ function boatExitAction(){
+  if(state.boatMode!=='anchored'||!['ready','caught','failed'].includes(state.phase)){
+   toast('只有近岸抛锚时才能登岸');return;
+  }
+  if(!world.boat.disembark()){toast('靠近岸边至 45 m 范围外才能登岸');return}
+  if(state.phase!=='ready')reset();
+  storeBoat();
+  const vessel=world.boat.getState();
+  let dockIndex=0,closest=Infinity;
+  for(let i=0;i<DOCKS.length;i++){
+   const dist=Math.hypot(vessel.x-DOCKS[i].x,vessel.z-DOCKS[i].z);
+   if(dist<closest){closest=dist;dockIndex=i}
+  }
+  state.boatMode='shore';rodPivot.visible=true;
+  ui('observeFish').disabled=false;
+  world.setCameraMode('orbit');
+  viewLocation(dockIndex);
+  hint('已安全登岸','可步行选择新钓点或再次登船','渔船会保留剩余燃油，下次登船继续使用');
+  refreshBoatHud();
+  toast('已抵达 '+DOCKS[dockIndex].name);
+ }
+ function boatRefuelAction(){
+  if(state.boatMode!=='anchored'||Math.hypot(world.boat.getState().x,world.boat.getState().z)<45){
+   toast('请回到近岸抛锚后补给');return;
+  }
+  const oldFuel=world.boat.getState().fuel;
+  if(oldFuel>=99.9){toast('燃油已满');return}
+  if(saveData.coins<95){toast('补给需要 95 金币');return}
+  if(!world.boat.refuel(100))return;
+  saveData.coins-=95;storeBoat();updateFunds();
+  refreshBoatHud();toast('补给成功 · 燃油 100%');
+ }
+ ui('boatButton').onclick=boatButtonAction;
+ ui('boatExit').onclick=boatExitAction;
+ ui('boatRefuel').onclick=boatRefuelAction;
+
  ui('close').onclick=()=>ui('modal').hidden=true;
  ui('modal').onclick=e=>{if(e.target===ui('modal'))ui('modal').hidden=true};
  ui('shop').onclick=shop;ui('journal').onclick=journal;ui('location').onclick=locationMenu;ui('contracts').onclick=contractsMenu;
@@ -446,18 +548,31 @@ export function createAngler(world){
    if(audioEnabled)ambientPlay();else ambience.pause();
  };
  ui('play').onclick=()=>{
-  ui('intro').hidden=true;ui('hud').hidden=false;state.started=true;world.setTimeOfDay(.31,{resumeCycle:true});world.setWind(.26);
+  ui('intro').hidden=true;ui('hud').hidden=false;state.started=true;
+  refreshBoatHud();world.setTimeOfDay(.31,{resumeCycle:true});world.setWind(.26);
   world.setMist(.25);world.setCalmness(.78);updateFunds();ambientPlay();
   // User gesture unlocks WebAudio (no autoplay sound).
   viewLocation(state.location);
  };
- updateFunds();setPhase('ready');
+ updateFunds();setPhase('ready');refreshBoatHud();
  function update(dt){
   totalTime+=dt;state.elapsed+=dt;
   if(!state.started)return;
   walk(dt);
+  if(state.boatMode==='piloting'){
+   world.boat.setControls({
+    forward:walkingKeys.has('KeyW'),reverse:walkingKeys.has('KeyS'),
+    left:walkingKeys.has('KeyA'),right:walkingKeys.has('KeyD')
+   });
+  }else world.boat.setControls({});
+  if(state.boatMode!=='shore'&&totalTime-state.lastBoatStore>=5){
+   state.lastBoatStore=totalTime;storeBoat();
+  }
+  if(totalTime-(state.lastBoatUI??0)>.25){
+   state.lastBoatUI=totalTime;refreshBoatHud();
+  }
   const aimMarker=ui('aim');
-  const showingAim=(state.phase==='ready'||state.phase==='charging')&&world.director.mode!=='underwater';
+  const showingAim=(state.phase==='ready'||state.phase==='charging')&&world.director.mode!=='underwater'&&state.boatMode!=='piloting';
   aimMarker.style.opacity=showingAim?'.86':'0';
   if(showingAim){
     const aim=projectAim(state.phase==='charging'?state.power:.49);
@@ -539,6 +654,7 @@ export function createAngler(world){
   lineVisible:line.visible,fish:state.fish?.name||null,location:state.location,
   hookFromSchool:!!state.hookFromSchool,schoolFishNearFloat:world.shoals.scan(state.worldX,state.worldZ,14).length,
   observingFish:world.director.mode==='underwater',rodHidden:!rodPivot.visible,
+  boatMode:state.boatMode,boatOwned:saveData.boatOwned,boatFuel:world.boat.getState().fuel,boatDistance:previousBoatDistance+world.boat.getState().distance,
   bait:saveData.bait,baitName:BAITS[saveData.bait].name,activeBait:state.activeBait,baitStock:{...saveData.baitStock},
   contractsReady:availableClaims(saveData.contracts,saveData.catches),contractsCompleted:CONTRACTS.filter(job=>saveData.contracts.claimed[job.id]).length,
   recentCatchCount:saveData.catchLog.length,lineSegments:LINE_SEGMENTS,liveHabitat:habitat({
