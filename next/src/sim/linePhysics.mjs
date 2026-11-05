@@ -10,7 +10,7 @@ export function lineCurve(from,to,{tension=0,wind=0,time=0}={},target=new Float3
  const distance=Math.hypot(dx,dy,dz);
  const sag=Math.min(2.6,distance*.03)*(1-.77*t);
  for(let i=0;i<LINE_SEGMENTS;i++){
-  const u=i/(LINE_SEGMENTS-1),arc=Math.sin(Math.PI*u);
+  const u=i/(LINE_SEGMENTS-1),arc=(i===0||i===LINE_SEGMENTS-1)?0:Math.sin(Math.PI*u);
   const side=.12*gust*Math.sin(time*2.4+i*.54)*arc*(1-.65*t);
   target[i*3]=from.x+dx*u+side;
   target[i*3+1]=from.y+dy*u-sag*arc;
