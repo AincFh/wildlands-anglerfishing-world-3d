@@ -3,10 +3,12 @@
  * Geometry and material are entirely local; no external models or image URLs.
  */
 import * as THREE from 'three';
+import {fishShape,fishSwimPose} from '../sim/fishMotion.mjs';
 
 export function makeFishModel() {
   const group=new THREE.Group();
   group.name='fish-3d-trophy';
+  const rig=new THREE.Group();rig.name='fish-anatomical-rig';group.add(rig);
   const color=new THREE.Color();
   const segments=50,round=22,vertices=[],vertexColors=[],uv=[],indices=[];
   for(let i=0;i<=segments;i++){
@@ -44,7 +46,7 @@ export function makeFishModel() {
     roughness:.46,flatShading:false
   });
   const body=new THREE.Mesh(geo,material);body.name='anatomical-fish-body';
-  body.castShadow=true;group.add(body);
+  body.castShadow=true;rig.add(body);
   const finMat=new THREE.MeshStandardMaterial({
     color:0x67795e,side:THREE.DoubleSide,roughness:.62,metalness:.02
   });
@@ -56,11 +58,19 @@ export function makeFishModel() {
     g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));
     g.setIndex(ix);g.computeVertexNormals();
     const mesh=new THREE.Mesh(g,finMat);mesh.name=name;mesh.castShadow=true;
-    group.add(mesh);return mesh;
+    rig.add(mesh);return mesh;
   }
   // Forked caudal fin, dorsal spines, secondary dorsal + paired pectorals.
   fin('forked-tail',[[0,0,.67],[0,.39,1.12],[0,.14,.98],[0,0,.85],
                      [0,-.14,.98],[0,-.39,1.12]]);
+  // A real transform hinge at the tail peduncle: pivot-relative vertices
+  // avoid rotating the entire fish in circles during a fighting burst.
+  const tailMesh=rig.getObjectByName('forked-tail');
+  const tailJoint=new THREE.Group();tailJoint.name='caudal-hinge';tailJoint.position.z=.67;
+  const tailAttr=tailMesh.geometry.attributes.position;
+  for(let k=0;k<tailAttr.count;k++)tailAttr.setZ(k,tailAttr.getZ(k)-.67);
+  tailAttr.needsUpdate=true;tailMesh.geometry.computeBoundingSphere();
+  rig.remove(tailMesh);tailJoint.add(tailMesh);rig.add(tailJoint);
   fin('dorsal-fin',[[0,.17,-.29],[0,.43,-.14],[0,.47,.03],[0,.38,.2],[0,.16,.31]]);
   fin('adipose-fin',[[0,.085,.45],[0,.18,.53],[0,.07,.62]]);
   fin('anal-fin',[[0,-.11,.34],[0,-.31,.5],[0,-.08,.62]]);
@@ -73,15 +83,15 @@ export function makeFishModel() {
       new THREE.SphereGeometry(.041,12,10),
       new THREE.MeshStandardMaterial({color:0xf0e7bc,roughness:.25})
     );
-    sclera.position.set(side*.154,.058,-.58);sclera.name='eye';group.add(sclera);
+    sclera.position.set(side*.154,.058,-.58);sclera.name='eye';rig.add(sclera);
     const pupil=new THREE.Mesh(
       new THREE.SphereGeometry(.026,12,10),
       new THREE.MeshStandardMaterial({color:0x101c15,metalness:.05,roughness:.18})
     );
-    pupil.position.set(side*.189,.059,-.586);pupil.name='pupil';group.add(pupil);
+    pupil.position.set(side*.189,.059,-.586);pupil.name='pupil';rig.add(pupil);
     const glint=new THREE.Mesh(new THREE.SphereGeometry(.008,8,6),
       new THREE.MeshBasicMaterial({color:0xffffff}));
-    glint.position.set(side*.207,.071,-.595);group.add(glint);
+    glint.position.set(side*.207,.071,-.595);rig.add(glint);
     const gillCurve=new THREE.CatmullRomCurve3([
       new THREE.Vector3(side*.205,.115,-.43),
       new THREE.Vector3(side*.244,.02,-.37),
@@ -89,16 +99,53 @@ export function makeFishModel() {
     ]);
     const gill=new THREE.Mesh(new THREE.TubeGeometry(gillCurve,15,.006,5),
       new THREE.MeshStandardMaterial({color:0x465e52,roughness:.85}));
-    gill.name='gill-line';group.add(gill);
+    gill.name='gill-line';rig.add(gill);
     const spotMat=new THREE.MeshStandardMaterial({color:0x344b35,roughness:.89});
     for(let k=0;k<26;k++){
       const t=.27+((k*13%29)/38),a=.5+((k*7%15)/36);
       const full=Math.pow(Math.max(0.001,Math.sin(Math.PI*t)),.65);
       const z=-.77+t*1.53,x=side*(.27*full+.009),y=(.22*full)*Math.cos(a*1.65);
       const spot=new THREE.Mesh(new THREE.SphereGeometry(.009+(k%3)*.003,5,4),spotMat);
-      spot.position.set(x,y,z);spot.name='scales-spot';group.add(spot);
+      spot.position.set(x,y,z);spot.name='scales-spot';rig.add(spot);
     }
   }
-  group.traverse(o=>{if(o.isMesh)o.frustumCulled=false});
-  return {group,material,tail:group.getObjectByName('forked-tail')};
+  // Hinged pectoral fins have independent stroke motion.
+  const pectorals=[];
+  for(const side of [-1,1]){
+    const mesh=rig.getObjectByName(side===1?'right-pectoral':'left-pectoral');
+    const anchor=[side*.15,-.035,-.28];
+    const attr=mesh.geometry.attributes.position;
+    for(let k=0;k<attr.count;k++){
+      attr.setXYZ(k,attr.getX(k)-anchor[0],attr.getY(k)-anchor[1],attr.getZ(k)-anchor[2]);
+    }
+    attr.needsUpdate=true;mesh.geometry.computeBoundingSphere();
+    const hinge=new THREE.Group();hinge.name=side===1?'right-fin-hinge':'left-fin-hinge';
+    hinge.position.set(...anchor);
+    rig.remove(mesh);hinge.add(mesh);rig.add(hinge);
+    pectorals.push(hinge);
+  }
+  let speciesIndex=0,pose=fishSwimPose(0,.15,0),shape=fishShape(0);
+  function setSpecies(index){
+    speciesIndex=Number.isInteger(index)&&index>=0&&index<8?index:0;
+    shape=fishShape(speciesIndex);
+    // These scale the anatomical mesh together, not the enclosing camera-space
+    // trophy transform. Pike becomes long/lean; carp deep; sturgeon elongated.
+    rig.scale.set(shape.width,shape.depth,shape.length);
+    tailMesh.scale.y=shape.tail;
+    return shape;
+  }
+  function animate(time,intensity=.5){
+    pose=fishSwimPose(time,intensity,speciesIndex);
+    tailJoint.rotation.y=pose.tailYaw;
+    pectorals[0].rotation.y=pose.leftFinYaw;
+    pectorals[1].rotation.y=pose.rightFinYaw;
+    rig.rotation.z=pose.roll;
+    rig.rotation.x=pose.pitch;
+    return pose;
+  }
+  setSpecies(0);animate(0,.2);
+  let meshCount=0;
+  group.traverse(o=>{if(o.isMesh){o.frustumCulled=false;meshCount++}});
+  return {group,rig,material,tail:tailMesh,meshCount,setSpecies,animate,
+    getPose:()=>pose,getShape:()=>shape};
 }
