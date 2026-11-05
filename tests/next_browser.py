@@ -72,6 +72,20 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         assert world["treeCount"] > 100, world
         assert world["shoreDetails"]["grass"] > 200 and world["shoreDetails"]["rocks"] > 50, world
         assert world["renderer"] == "webgl", world
+        # Real subsurface fish must exist in the rendered WebGL scene.
+        school=world["fishSchools"]
+        assert school["population"] == 20 and school["active"] == 20, school
+        assert school["meshes"] == 2 and school["drawInstanced"], school
+        live=driver.execute_script("""return (() => {
+          const group=window.__wildlandsNext.world.shoals.group;
+          return {name:group.name,meshes:group.children.length,
+            bodies:group.children[0].isInstancedMesh,tails:group.children[1].isInstancedMesh,
+            instanceCount:group.children[0].count,
+            fish:window.__wildlandsNext.world.shoals.simulation.fish.length};
+        })()""")
+        assert live == {"name":"live-underwater-fish-schools","meshes":2,
+                        "bodies":True,"tails":True,"instanceCount":20,"fish":20}, live
+        driver.save_screenshot(str(ARTIFACTS / "01b-visible-fish-schools.png"))
         driver.find_element(By.ID, "play").click()
         time.sleep(2)
         ready=driver.execute_script("return window.__wildlandsNext.getState()")
@@ -86,6 +100,7 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
            stations: document.querySelectorAll('[data-spot]').length
         }""")
         assert forecast == {"visible":True,"map":True,"forecast":5,"stations":3},forecast
+        assert "水下实体追踪" in driver.find_element(By.ID,"modalBody").text
         driver.save_screenshot(str(ARTIFACTS / "02b-lake-sonar.png"))
         driver.find_element(By.ID,"close").click()
         cast = driver.find_element(By.ID, "cast")
@@ -97,6 +112,8 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
             phase=driver.execute_script("return window.__wildlandsNext.getState().phase")
             if phase=="waiting":break
         assert phase=="waiting", f"Expected floating bobber, got {phase}"
+        assert driver.execute_script("return window.__wildlandsNext.getState().fishSchools.bait"),
+          "Submerged bait must attract actual lake swimmers"
         assert driver.execute_script("return window.__wildlandsNext.getState().bobberVisible")
         driver.save_screenshot(str(ARTIFACTS / "03-float.png"))
         driver.execute_script("window.__wildlandsNext.test.forceBite();window.__wildlandsNext.angler.update(.12)")
@@ -106,6 +123,9 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         driver.find_element(By.ID, "cast").click()
         time.sleep(.3)
         assert driver.execute_script("return window.__wildlandsNext.getState().phase")=="fighting"
+        fishing=driver.execute_script("return window.__wildlandsNext.getState()")
+        assert fishing["fishSchools"]["bait"] is False
+        assert fishing["fishSchools"]["hooked"] in (0,1),fishing
         # Independent anatomical hinges must animate in the live 3D engine.
         pose0=driver.execute_script("return window.__wildlandsNext.getState()")
         driver.execute_script("window.__wildlandsNext.angler.update(.21)")
