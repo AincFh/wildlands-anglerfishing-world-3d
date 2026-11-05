@@ -102,6 +102,13 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         assert mobile["pad"]["bottom"] < mobile["status"]["y"], mobile
         assert not mobile["horizontalOverflow"], mobile
         driver.save_screenshot(str(ARTIFACTS / "08-mobile-controls.png"))
+        pos0=driver.execute_script("return {x:window.__wildlandsNext.world.camera.position.x,z:window.__wildlandsNext.world.camera.position.z}")
+        move=driver.find_element(By.CSS_SELECTOR, '#touchMove button[data-move="KeyA"]')
+        ActionChains(driver).move_to_element(move).click_and_hold().pause(.75).release().perform()
+        pos1=driver.execute_script("return {x:window.__wildlandsNext.world.camera.position.x,z:window.__wildlandsNext.world.camera.position.z}")
+        delta=((pos1["x"]-pos0["x"])**2+(pos1["z"]-pos0["z"])**2)**.5
+        assert delta>.15, f"Touch movement control failed: moved {delta:.3f} m"
+        mobile["movement_delta_m"]=round(delta,2)
         errors=[entry["message"] for entry in driver.get_log("browser")
                  if entry["level"] == "SEVERE" and "favicon" not in entry["message"]]
         # Third-party optional GLB may be blocked in some test regions; the
