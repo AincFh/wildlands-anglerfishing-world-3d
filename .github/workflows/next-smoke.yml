@@ -18,7 +18,7 @@ jobs:
         with:
           node-version: '22'
       - name: Verify deterministic bait and fish ecology
-        run: node --test tests/bait.test.mjs tests/fish-motion.test.mjs tests/contracts.test.mjs
+        run: node --test tests/bait.test.mjs tests/fish-motion.test.mjs tests/contracts.test.mjs tests/ecology.test.mjs tests/catch-log.test.mjs tests/line-physics.test.mjs
       - name: Vendor pinned browser runtime locally
         run: |
           npm install --ignore-scripts --no-audit --no-fund --no-package-lock
