@@ -189,11 +189,21 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         ActionChains(driver).move_to_element(move).click_and_hold().perform()
         held=driver.execute_script("return document.querySelector('#touchMove button[data-move=\"KeyA\"]').classList.contains('pressed')")
         assert held, "Pointerdown did not activate the movement key"
-        driver.execute_script("window.__wildlandsNext.angler.update(.30)")
+        # Sample immediately after the gameplay update while the pointer is
+        # still captured; software GPU may render an unrelated orbit frame
+        # between two Selenium commands and erase the observed displacement.
+        motion=driver.execute_script("""return (() => {
+            const g=window.__wildlandsNext, before={x:g.world.camera.position.x,z:g.world.camera.position.z};
+            const phase=g.getState().phase;
+            g.angler.update(.30);
+            const after={x:g.world.camera.position.x,z:g.world.camera.position.z};
+            return {before,after,phase};
+        })()""")
         ActionChains(driver).release().perform()
-        pos1=driver.execute_script("return {x:window.__wildlandsNext.world.camera.position.x,z:window.__wildlandsNext.world.camera.position.z}")
+        pos1=motion["after"]
         delta=((pos1["x"]-pos0["x"])**2+(pos1["z"]-pos0["z"])**2)**.5
-        assert delta>.15, f"Touch movement control failed: moved {delta:.3f} m"
+        if delta<=.15:
+            raise AssertionError(f"Touch move {delta:.3f}m; held={held}, phase={motion['phase']}, position={pos0}, update={motion}")
         mobile["movement_delta_m"]=round(delta,2)
         errors=[entry["message"] for entry in driver.get_log("browser")
                  if entry["level"] == "SEVERE" and "favicon" not in entry["message"]]
