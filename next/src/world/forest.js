@@ -48,6 +48,15 @@ export function createForest({ heightAt, seed = 5150 }) {
     const z = Math.sin(angle) * r + rng.float(-2, 2);
     const h = heightAt(x, z);
     if (h < 0.8 || h > 16) continue;
+    // All three shore spawn points must have a clear sightline and a walkable
+    // landing. Previously the camera spawned *inside* an instanced conifer;
+    // its low-poly crown filled the right third of the picture.
+    const landings=[[18,65],[-61,27],[57,-32]];
+    if(landings.some(([sx,sz])=>Math.hypot(x-sx,z-sz)<20))continue;
+    // Clear the shoreline walking belt. Do not plant foreground trunks where
+    // the camera is likely to be physically moving.
+    if(r<69 && Math.hypot(x-18,z-65)<32)continue;
+
     const k = keyOf(x, z);
     if (grid.has(k)) continue;
     grid.set(k, true);
