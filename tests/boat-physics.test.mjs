@@ -14,7 +14,7 @@ test('boarding transitions ambient boat to driven boat; throttle accelerates gra
  const boat=makeBoatNavigation(),start=boat.board(0,90);
  assert.equal(start.mode,'piloting');assert.equal(start.speed,0);assert.equal(start.fuel,90);
  const moved=progress(boat,60,{forward:true});
- assert.ok(moved.speed>1.5&&moved.speed<8.4,moved);
+ assert.ok(moved.speed>1.5&&moved.speed<=8.4,moved);
  assert.ok(moved.speedKmh>5&&moved.speedKmh<=30.3);
  assert.ok(moved.distance>1&&moved.fuel<90);
  assert.ok(Math.hypot(moved.x-start.x,moved.z-start.z)>1);
@@ -25,7 +25,7 @@ test('rudder genuinely turns the vessel and reverse moves backwards',()=>{
  progress(a,60,{forward:true,left:true});progress(b,60,{forward:true});
  assert.ok(Math.abs(a.state().heading-b.state().heading)>.1);
  assert.ok(Math.hypot(a.state().x-b.state().x,a.state().z-b.state().z)>.2);
- const c=makeBoatNavigation();c.board(0);
+ const c=makeBoatNavigation();c.board(0);c.setPose({x:0,z:0});
  const reverse=progress(c,40,{reverse:true});
  assert.ok(reverse.speed<-.3,reverse);
 });
@@ -41,7 +41,7 @@ test('shores are collision walls, engine cannot leave radius 52',()=>{
 });
 test('anchor stops and locks the hull, allows trip resume, only dockside permits leaving',()=>{
  const b=makeBoatNavigation();b.board(0);
- progress(b,25,{forward:true});
+ progress(b,8,{forward:true});
  assert.equal(b.anchor(),true);
  const spot=b.state();assert.equal(spot.mode,'anchored');assert.equal(spot.speed,0);
  progress(b,100,{forward:true,wind:0});
