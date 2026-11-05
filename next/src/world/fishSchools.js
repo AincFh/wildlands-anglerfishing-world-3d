@@ -37,7 +37,6 @@ export function createFishSchoolsView({heightAt,isMobile=false}={}){
  }
  body.name='underwater-fish-bodies';tails.name='independent-cauda-fins';
  const dummy=new THREE.Object3D(),bodyColor=new THREE.Color(),finColor=new THREE.Color();
- const visibleScale=new THREE.Vector3(),tailScale=new THREE.Vector3();
  for(let i=0;i<total;i++){
   const f=simulation.fish[i],shape=fishShape(f.species);
   bodyColor.setHex(SPECIES_COLORS[f.species]).multiplyScalar(.82+(i%5)*.035);
@@ -46,7 +45,7 @@ export function createFishSchoolsView({heightAt,isMobile=false}={}){
   tails.setColorAt(i,finColor);
  }
  body.instanceColor.needsUpdate=true;tails.instanceColor.needsUpdate=true;
- let bait=null,disturbance=null,accumulator=0,frame=0;
+ let bait=null,disturbance=null,frame=0;
  // Keep underwater meshes out of the cube reflection pass: no additional
  // world render and no silhouettes reflected through the water.
  function setBait(location){
@@ -72,12 +71,12 @@ export function createFishSchoolsView({heightAt,isMobile=false}={}){
    const scale=hidden?0:1;
    // Fish geometry faces local -Z; heading is measured with atan2(dz,dx).
    dummy.position.set(f.x,y,f.z);
-   dummy.rotation.set(0,Math.PI/2-f.heading,.035*Math.sin(simulation.time*2+f.phase));
+   dummy.rotation.set(0,-Math.PI/2-f.heading,.035*Math.sin(simulation.time*2+f.phase));
    dummy.scale.set(fishWidth*scale,fishHeight*scale,fishLength*scale);
    dummy.updateMatrix();body.setMatrixAt(i,dummy.matrix);
    dummy.position.set(f.x-Math.cos(f.heading)*fishLength*.8,y,
      f.z-Math.sin(f.heading)*fishLength*.8);
-   dummy.rotation.set(0,Math.PI/2-f.heading+Math.sin(simulation.time*(5+f.species*.33)+f.phase)*.22,
+   dummy.rotation.set(0,-Math.PI/2-f.heading+Math.sin(simulation.time*(5+f.species*.33)+f.phase)*.22,
      0);
    dummy.scale.set(.85*shape.width*scale,.69*shape.depth*scale,.84*shape.tail*scale);
    dummy.updateMatrix();tails.setMatrixAt(i,dummy.matrix);
