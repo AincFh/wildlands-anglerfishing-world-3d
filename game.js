@@ -4,6 +4,8 @@
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v)),mix=(a,b,s)=>a+(b-a)*s,TAU=Math.PI*2;
 let randSeed=30815; const rand=()=>{randSeed=(Math.imul(randSeed,1664525)+1013904223)>>>0;return randSeed/4294967296},R=(a,b)=>a+(b-a)*rand(),choose=a=>a[Math.floor(rand()*a.length)];
+const FIGHT=window.WILDLANDS_FIGHT;
+if(!FIGHT)throw Error('Fish dynamics module not loaded');
 const canvas=$('#world'),gl=canvas.getContext('webgl2',{antialias:true,alpha:false,depth:true,powerPreference:'high-performance'});
 if(!gl){$('#start').disabled=true;$('#start').textContent='当前浏览器不支持 WebGL 2';return}
 const PINE='pine',BIRCH='birch',GRASS='grass';
@@ -39,10 +41,11 @@ const POINTS=[
  {name:'白桦隐湾',short:'BIRCH COVE',pos:[-178,-2],yaw:.85,pitch:-.09,desc:'白桦树与芦苇环绕的隐蔽水湾。'},
  {name:'岬角礁岸',short:'CLIFF POINT',pos:[182,-5],yaw:-.79,pitch:-.11,desc:'深水与裸露岩壁交错，常有大鱼出没。'}
 ];
-const SAVEKEY='wildlands_angler_v1';let data={money:1200,level:1,xp:0,catches:0,weight:0,best:0,rod:0,lure:0,ownedRods:[0],ownedLures:[0],gallery:{},quest:0,point:0,dayTime:6.7,quality:.86,music:false};
+const SAVEKEY='wildlands_angler_v1';let data={money:1200,level:1,xp:0,catches:0,weight:0,best:0,rod:0,lure:0,ownedRods:[0],ownedLures:[0],gallery:{},quest:0,point:0,dayTime:6.7,quality:.86,music:false,drag:.55};
 try{let val=JSON.parse(localStorage.getItem(SAVEKEY)||'null');if(val&&typeof val==='object'){data={...data,...val};data.gallery=val.gallery&&typeof val.gallery==='object'?val.gallery:{};data.ownedRods=Array.isArray(val.ownedRods)?val.ownedRods:[0];data.ownedLures=Array.isArray(val.ownedLures)?val.ownedLures:[0]}}catch(e){}
+data.drag=FIGHT.clampDrag(data.drag);
 const save=()=>{try{localStorage.setItem(SAVEKEY,JSON.stringify(data))}catch(e){}};
-const state={started:false,panel:'',phase:'ready',power:0,chargeStart:0,elapsed:0,biteDelay:0,biteWindow:0,castTimer:0,castLength:1.22,castStart:[0,0,0],castTarget:[0,0,0],bobber:[0,0,0],fish:null,weight:0,length:0,stamina:1,tension:.2,stress:0,slack:0,distance:0,reeling:false,shake:0,boat:false,boatYaw:0,boatSpeed:0,boatX:-22,boatZ:22,fishSchool:[],quality:.86,fps:0};
+const state={started:false,panel:'',phase:'ready',power:0,chargeStart:0,elapsed:0,biteDelay:0,biteWindow:0,castTimer:0,castLength:1.22,castStart:[0,0,0],castTarget:[0,0,0],bobber:[0,0,0],fish:null,weight:0,length:0,stamina:1,tension:.2,stress:0,slack:0,distance:0,reeling:false,shake:0,boat:false,boatYaw:0,boatSpeed:0,boatX:-22,boatZ:22,fishSchool:[],quality:.86,fps:0,fight:null};
 const cam={x:-12,z:41,y:0,yaw:0,pitch:-.08,targetYaw:0,targetPitch:-.08,bob:0};
 let nowTime=0,lastFrame=0,clock=0,drawCount=0,drawSec=0,worldMeshes=[],worldBuilt=false,toastTimer=0,qualityAdjust=0,music=null;
 const VK={}; const keyHeld=new Set();let pointerCharge=false,rotateCamera=false,dragX=0,dragY=0,boatNear=false;
@@ -369,7 +372,7 @@ function syncSound(){if(!music){music=new Audio(window.WILDLANDS_MEDIA['morning_
 function notify(message,duration=2700){$('#toast').textContent=message;$('#toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),duration)}
 function alertCenter(message,duration=2000){$('#message').textContent=message;$('#message').classList.add('show');setTimeout(()=>$('#message').classList.remove('show'),duration)}
 function setPhase(phase){state.phase=phase;$('#bitePrompt').classList.toggle('show',phase==='bite');$('#tensionMetric').classList.toggle('active',phase==='fighting');}
-function ready(){state.reeling=false;state.fish=null;state.power=0;state.biteWindow=0;state.tension=.2;state.stress=0;state.slack=0;setPhase('ready')}
+function ready(){state.reeling=false;state.fish=null;state.fight=null;state.power=0;state.biteWindow=0;state.tension=.2;state.stress=0;state.slack=0;setPhase('ready')}
 function startAction(){if(!state.started||state.panel||$('#catchOverlay').classList.contains('open'))return;
  if(state.phase==='ready'){state.chargeStart=performance.now()/1000;state.power=0;setPhase('charging');tone(330,.09)}
  else if(state.phase==='bite')strike();else if(state.phase==='fighting')state.reeling=true;
@@ -383,7 +386,9 @@ function cast(){
  state.castStart=[cam.x,cam.y-.5,cam.z];state.castTarget=[tx,.08,tz];state.bobber=state.castStart.slice();state.castLength=.85+state.power*.55;state.castTimer=0;setPhase('casting');sound('cast',.22);
 }
 function triggerBite(){state.fish=chooseFish();state.weight=+(state.fish.base*(.65+rand()*1.8)).toFixed(2);state.weight=Math.min(state.weight,state.fish.max);state.length=Math.round(22+Math.sqrt(state.weight)*20+R(0,7));state.biteWindow=3.6;setPhase('bite');tone(960,.20,'triangle',.045);notify('咬钩！按空格扬竿！',1800)}
-function strike(){if(state.phase!=='bite')return;state.stamina=1;state.tension=.26;state.distance=Math.hypot(cam.x-state.bobber[0],cam.z-state.bobber[2])+state.weight*.70;state.stress=0;state.slack=0;state.reeling=false;setPhase('fighting');tone(440,.2,'sawtooth',.035);notify('成功扬竿！收线时观察右侧张力条。',2400)}
+function strike(){if(state.phase!=='bite')return;state.stamina=1;state.tension=.26;state.distance=Math.hypot(cam.x-state.bobber[0],cam.z-state.bobber[2])+state.weight*.70;state.stress=0;state.slack=0;state.reeling=false;
+ state.fight=FIGHT.makeFight(state.fish,state.weight,state.distance,0);
+ setPhase('fighting');tone(440,.2,'sawtooth',.035);notify('成功扬竿！收线时观察右侧张力条。',2400)}
 function escaped(message){notify(message,3400);tone(180,.4,'triangle');ready()}
 function fishArtwork(f){
  const rgb=f.color.map(c=>Math.round(clamp(c)*255)), base=`rgb(${rgb.join(',')})`;
@@ -414,19 +419,31 @@ function updateFishing(dt){let p=state.phase;if(p==='charging')state.power=(1-Ma
  if(p==='waiting'){state.biteDelay-=dt;state.bobber[1]=.02+.06*Math.sin(clock*3);if(state.biteDelay<=0)triggerBite()}
  if(p==='bite'){state.biteWindow-=dt;state.bobber[1]=-.15+.16*Math.sin(clock*19);$('#biteBar').style.width=(clamp(state.biteWindow/3.6)*100)+'%';if(state.biteWindow<=0)escaped('鱼儿脱钩了。下次及时按空格扬竿。')}
  if(p==='fighting'){
- let f=state.fish;if(!f){ready();return}
- let pull=.55+.37*Math.sin(clock*4.0+state.weight)+.13*Math.sin(clock*9);
- let rod=RODS[data.rod],swing=pull*f.pull;
- state.tension+=dt*(state.reeling?(.27+swing*.27)/rod.line:(-.23+swing*.07));
- state.tension=clamp(state.tension);
- if(state.reeling){state.distance-=dt*(5.2+rod.drag*3.4)*(state.tension<.20?.55:1);state.stamina=Math.max(0,state.stamina-dt*.095*rod.drag)}
- else{state.distance+=dt*(.14+.45*swing)*(state.stamina>.2?1:.5);state.stamina=Math.min(1,state.stamina+dt*.009)}
- if(state.tension>.92)state.stress+=dt*(.9+.34*swing)/rod.line;else state.stress=Math.max(0,state.stress-dt*.95);
- if(state.tension<.025)state.slack+=dt;else state.slack=Math.max(0,state.slack-dt*.8);
- if(state.stress>.8){escaped('鱼线断了！张力过大时要松开收线。');return}
- if(state.slack>3){escaped('鱼线太松，鱼儿逃跑了！');return}
- if(state.distance<=1.25||state.stamina<=0){fishCaught();return}
- state.distance=Math.min(state.distance,180);state.bobber[1]=-.06+.12*Math.sin(clock*7);
+  if(!state.fight||!state.fish){ready();return}
+  const beforeBurst=state.fight.burstCount;
+  const rod=RODS[data.rod];
+  state.fight=FIGHT.stepFight(state.fight,{dt,reeling:state.reeling,drag:data.drag,line:rod.line,retrieve:rod.drag});
+  state.distance=state.fight.distance;state.tension=state.fight.tension;state.stress=state.fight.stress;
+  state.slack=state.fight.slack;state.stamina=state.fight.stamina;
+  if(state.fight.burstCount>beforeBurst){
+   notify(state.fish.name+'：'+state.fight.heading+'！降低泄力并暂时松开收线。',1750);
+   tone(275,.13,'triangle',.035);
+  }
+  const initial=Math.atan2(state.castTarget[0]-cam.x,cam.z-state.castTarget[2]);
+  const angle=initial+state.fight.bearing*.33;
+  const fishX=cam.x+Math.sin(angle)*Math.max(2,state.distance);
+  const fishZ=cam.z-Math.cos(angle)*Math.max(2,state.distance);
+  if(terrainHeight(fishX,fishZ)<-.05){
+   state.bobber[0]=fishX;state.bobber[2]=fishZ;
+  }else{
+   state.bobber[0]=mix(state.bobber[0],state.castTarget[0],clamp(dt*1.2));
+   state.bobber[2]=mix(state.bobber[2],state.castTarget[2],clamp(dt*1.2));
+  }
+  state.bobber[1]=-.06+.13*Math.sin(clock*(state.fight.burst>.3?11:5));
+  if(state.fight.outcome==='snap'){escaped('鱼线承受不住拉力而断开！降低泄力，等待鱼冲刺结束。');return}
+  if(state.fight.outcome==='escape'){escaped('鱼线过于松弛，鱼脱钩了！');return}
+  if(state.fight.outcome==='out_of_line'){escaped('鱼冲出了钓线最大距离，脱钩了！');return}
+  if(state.fight.outcome==='caught'){fishCaught();return}
  }
 }
 function updateCamera(dt){if(!state.started||state.panel||$('#catchOverlay').classList.contains('open'))return;
@@ -451,6 +468,8 @@ let uiTimer=0;
 function updateHUD(){let place=currentPlace();$('#locName').textContent='奥尔德山谷 · '+place.name;$('#placeTitle').textContent=place.name;$('#placeDesc').textContent=place.desc;$('#timeLabel').textContent=clockText();$('#weatherLabel').textContent=data.dayTime>18?'薄暮 · 9°C':'晨雾 · 14°C';$('#level').textContent=String(data.level).padStart(2,'0');$('#money').textContent=data.money.toLocaleString();$('#catchCount').textContent=data.catches.toLocaleString();
  let quest=data.quest,txt=['山谷的第一条鱼','五公斤的挑战','生态观察者','自由垂钓'][Math.min(3,quest)],desc=['捕获任意 3 条鱼，完成初次探险','钓获重量达到 5 kg 的鱼','发现至少 5 种不同鱼类','自由探索，寻找传奇鱼种'][Math.min(3,quest)],done=quest===0?Math.min(data.catches,3)+'/ 3':quest===1?(Math.min(5,data.best).toFixed(1)+'/ 5 kg'):quest===2?Object.keys(data.gallery).length+'/ 5':'✓';$('#questTitle').textContent=txt;$('#questDesc').textContent=desc;$('#questProgress').textContent=done;
  let p=state.phase,title={ready:'准备抛竿',charging:'蓄力抛投中',casting:'鱼漂正在飞行',waiting:'观察鱼漂',bite:'鱼儿正在咬钩',fighting:'收线搏鱼中'};$('#stateHeading').textContent=title[p]||'准备抛竿';$('#powerText').innerHTML=Math.round(state.power*100)+'<span>%</span>';$('#powerBar').style.width=state.power*100+'%';$('#distanceText').innerHTML=['fighting'].includes(p)?state.distance.toFixed(1)+' <span>m</span>':['waiting','bite','casting'].includes(p)?Math.round(Math.hypot(state.bobber[0]-cam.x,state.bobber[2]-cam.z))+' <span>m</span>':'— <span>m</span>';$('#staminaBar').style.width=(p==='fighting'?state.stamina*100:0)+'%';$('#tensionText').innerHTML=Math.round(state.tension*100)+'<span>%</span>';$('#tensionBar').style.width=state.tension*100+'%';$('#tensionLabel').textContent=state.tension>.78?'DANGER':state.tension<.15?'LOW':'NORMAL';$('#tensionLabel').style.color=state.tension>.78?'#ecad8b':'#b7d7c3';
+ $('#fightDetail').hidden=p!=='fighting';
+ if(p==='fighting'&&state.fight){$('#dragValue').textContent=Math.round(data.drag*100)+'%';$('#fishBehavior').textContent=state.fight.heading;$('#fishBurst').style.width=Math.round(clamp(state.fight.burst)*100)+'%';$('#fishEnergy').textContent=Math.round(state.fight.stamina*100)+'%';}
  $('#actionHint').innerHTML= p==='ready'?'<span class="mouse-icon">◉</span> 按住左键蓄力 · 松开抛竿 <span class="key-alt">右键拖动观察</span>':p==='charging'?'◉ <strong>松开左键投出鱼线</strong>':p==='waiting'?'◉ 等待鱼漂异动 · 观察湖面':p==='bite'?'空格 / 点击湖面 <strong>立即扬竿</strong>':p==='fighting'?'空格 / 按住左键 <strong>收线</strong> · 松开降低张力':'◉ 鱼漂飞行中';
  $('#boatText').textContent=state.boat?'下船':'登船';boatNear=Math.hypot(cam.x-state.boatX,cam.z-state.boatZ)<20;$('#boatBtn').style.opacity=state.boat||boatNear?'1':'.53';
 }
@@ -473,6 +492,7 @@ function toggleBoat(){
  cam.x=state.boatX;cam.z=state.boatZ+1.15;cam.targetPitch=-.10;
  notify('已登上独木舟 · WASD 驾驶，B 下船');
 }
+function adjustDrag(delta){const before=data.drag;data.drag=FIGHT.clampDrag(+(data.drag+delta).toFixed(2));if(before!==data.drag){save();tone(440,.06);if(state.phase==='fighting')notify('泄力已调整为 '+Math.round(data.drag*100)+'%',900);updateHUD();}}
 function equip(kind,i){let arr=kind==='rod'?RODS:LURES,owned=kind==='rod'?data.ownedRods:data.ownedLures,key=kind==='rod'?'rod':'lure',item=arr[i];if(!item)return;
  if(!owned.includes(i)){if(data.money<item.price)return notify('金币不足，需要 ◈ '+item.price.toLocaleString());data.money-=item.price;owned.push(i);tone(740,.19)}data[key]=i;save();openPanel(state.panel);notify('已装备 '+item.name)}
 function openPanel(name){if(!state.started)return;state.panel=name;state.reeling=false;let head={map:['TRAVEL / ALDER VALLEY','山谷地图','在同一片真实 3D 山谷内选择不同岸线观景点。'],gear:['EQUIPMENT / TACKLE','我的渔具','装备升级影响抛投距离、鱼线强度和收线速度。'],shop:['SUPPLY OUTPOST','户外补给站','钓到鱼可以赚取金币，解锁高性能渔具和鱼饵。'],species:['FIELD GUIDE / WILDLIFE','鱼类图鉴','记录发现的鱼种与各自的最佳重量。'],missions:['FIELD NOTES / MISSIONS','探险日志','从营地的第一次抛投，成长为山谷中的钓鱼老手。'],settings:['SYSTEM / SETTINGS','游戏设置','图像质量与操作提示。所有进度保存在当前浏览器中。']}[name];if(!head)return;
@@ -497,6 +517,7 @@ function keyboard(e,down){let k=e.key.toLowerCase();if([' ','arrowup','arrowdown
  if(k==='escape'){if(state.panel)closePanel();else if($('#catchOverlay').classList.contains('open'))$('#continue').click();return}
  if(!state.started||state.panel||$('#catchOverlay').classList.contains('open'))return;
  if(k===' '){startAction();return}
+ if(k==='['||k===']'){adjustDrag(k==='['?-.08:.08);return}
  if(k==='r')ready();if(k==='b')toggleBoat();if(k==='m')openPanel('map');if(k==='i')openPanel('gear');if(k==='j')openPanel('species');if(k==='q')openPanel('missions');if(k==='g')openPanel('shop');
 }
 function initInputs(){window.addEventListener('keydown',e=>keyboard(e,true));window.addEventListener('keyup',e=>keyboard(e,false));window.addEventListener('blur',()=>{keyHeld.clear();releaseAction();rotateCamera=false});
@@ -508,6 +529,8 @@ function initInputs(){window.addEventListener('keydown',e=>keyboard(e,true));win
  $('#continue').onclick=()=>{$('#catchOverlay').classList.remove('open');ready()};$('#closePanel').onclick=closePanel;$('#panelShade').onclick=closePanel;
  $$('[data-panel]').forEach(b=>b.onclick=()=>openPanel(b.dataset.panel));$('#boatBtn').onclick=toggleBoat;
  $('#sound').onclick=()=>{data.music=!data.music;save();syncSound();notify(data.music?'环境音已开启':'环境音已关闭')};
+ $('#dragDown').addEventListener('click',()=>adjustDrag(-.08));
+ $('#dragUp').addEventListener('click',()=>adjustDrag(.08));
  for(let [id,key] of [['tw','w'],['ta','a'],['ts','s'],['td','d']]){let b=$('#'+id);b.addEventListener('pointerdown',e=>{e.preventDefault();keyHeld.add(key)});for(let ev of ['pointerup','pointercancel','pointerleave'])b.addEventListener(ev,()=>keyHeld.delete(key))}
  $('#tlook').onclick=()=>{cam.targetYaw+=.32;cam.targetPitch=clamp(cam.targetPitch-.05,-.6,.38)};
  for(let id of ['tcast','tspace']){let b=$('#'+id);b.addEventListener('pointerdown',e=>{e.preventDefault();startAction()});for(let ev of ['pointerup','pointercancel'])b.addEventListener(ev,e=>{e.preventDefault();releaseAction()})}
@@ -519,5 +542,5 @@ function loop(ms){requestAnimationFrame(loop);let dt=clamp((ms-lastFrame)/1000,.
 }
 function boot(){initGPU();spawnFish();initInputs();let p=POINTS[data.point]||POINTS[0];cam.x=p.pos[0];cam.z=p.pos[1];cam.y=terrainHeight(cam.x,cam.z)+1.75;cam.yaw=cam.targetYaw=p.yaw;cam.pitch=cam.targetPitch=p.pitch;state.quality=data.quality;resize();updateHUD();requestAnimationFrame(loop)}
 try{boot()}catch(error){console.error('Failed to boot Wildlands',error);$('#start').disabled=true;$('#start').textContent='图形初始化失败，请检查控制台：'+error.message}
-window.WILDLANDS={getState(){return {started:state.started,phase:state.phase,power:state.power,tension:state.tension,distance:state.distance,fish:state.fish?.id||null,catches:data.catches,money:data.money,rod:data.rod,lure:data.lure,point:data.point,boat:state.boat,player:{x:cam.x,y:cam.y,z:cam.z,yaw:cam.yaw},fps:state.fps,staticVertices:models.solid?.count,foliageVertices:models.foliage?.count,waterVertices:models.water?.count,swimmingFish:state.fishSchool.length}},test:{bite(){if(state.phase!=='waiting')return false;triggerBite();return true},finish(){if(state.phase!=='fighting')return false;state.distance=0;updateFishing(.015);return true},tick(dt=1,held=false){state.reeling=held;clock+=dt;updateFishing(dt);return state.phase},setMoney(n){data.money=n;save()},setCamera(x,z,yaw=0){cam.x=x;cam.z=z;cam.targetYaw=cam.yaw=yaw;cam.y=terrainHeight(x,z)+1.75}}};
+window.WILDLANDS={getState(){return {started:state.started,phase:state.phase,power:state.power,tension:state.tension,distance:state.distance,fish:state.fish?.id||null,catches:data.catches,money:data.money,rod:data.rod,lure:data.lure,point:data.point,boat:state.boat,drag:data.drag,fishEnergy:state.fight?.stamina??null,fishBehavior:state.fight?.heading??null,fishBursts:state.fight?.burstCount??0,player:{x:cam.x,y:cam.y,z:cam.z,yaw:cam.yaw},fps:state.fps,staticVertices:models.solid?.count,foliageVertices:models.foliage?.count,waterVertices:models.water?.count,swimmingFish:state.fishSchool.length}},test:{bite(){if(state.phase!=='waiting')return false;triggerBite();return true},finish(){if(state.phase!=='fighting'||!state.fight)return false;state.fight.distance=.8;state.fight.stamina=0;state.fight.stress=0;state.fight.slack=0;updateFishing(.015);return true},tick(dt=1,held=false){state.reeling=held;clock+=dt;updateFishing(dt);return state.phase},setMoney(n){data.money=n;save()},setDrag(n){data.drag=FIGHT.clampDrag(n);save();updateHUD();return data.drag},setCamera(x,z,yaw=0){cam.x=x;cam.z=z;cam.targetYaw=cam.yaw=yaw;cam.y=terrainHeight(x,z)+1.75}}};
 })();
