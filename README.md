@@ -1,5 +1,17 @@
 # WILDLANDS · 山野钓行
 
+## 在线版本（两个独立入口）
+
+| 版本 | 访问地址 | 说明 |
+|---|---|---|
+| 原版 WebGL2 | [经典版](https://aincfh.github.io/wildlands-anglerfishing-world-3d/) | 保留已有游戏、存档及搏鱼系统，不受新引擎重建影响 |
+| WILDLANDS NEXT | [新 3D 渲染预览](https://aincfh.github.io/wildlands-anglerfishing-world-3d/next/) | Three.js 动态湖面与森林、3D 鱼体、第一人称抛投、移动端控制、钓获与装备、音效 |
+
+新版代码位于 [`next/`](next/)，操作说明、授权和已知限制见 [NEXT 开发文档](next/README.md)。GitHub Actions 对新版执行 Chrome/WebGL 真实画面与钓鱼/手机交互验收。
+
+**两版均属持续开发阶段。** NEXT 改进了真实视觉场景与交互体系，但还不是商业级 3D 钓鱼游戏。
+
+
 第一人称 3D 钓鱼网页游戏。由 WebGL2 + JavaScript 实现。**目前仍是可玩原型，不是成熟完整游戏。**
 
 ## 更新：差异化搏鱼系统
