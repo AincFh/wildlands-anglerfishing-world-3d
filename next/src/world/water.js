@@ -66,25 +66,27 @@ export function createWater({ isMobile = false } = {}) {
     cubeEnabled: true,
     refreshInterval: isMobile ? 4 : 2,
     normalEvery: 1,
+    vertexEvery: 1,
     // Objects hidden while the cube camera renders (mist/clouds would
     // otherwise smear big soft blobs across the reflection).
     hiddenFromReflection: [],
 
     update(time, calmness, wind) {
-      // CPU vertex waves (only where the lake actually is — cheap mask).
-      for (let i = 0; i < pos.count; i++) {
-        const x = baseXZ[i * 2];
-        const z = baseXZ[i * 2 + 1];
-        pos.setY(i, waveHeight(x, z, time, calmness, wind));
-      }
-      pos.needsUpdate = true;
-
-      // NOTE: vertex normals intentionally stay flat (up). Recomputing them
-      // from the coarse wave grid produces zigzag artifacts in reflections;
-      // all ripple detail comes from the scrolling normal map instead.
+      // Dynamic profiles throttle the heavy CPU lake mesh on slower devices.
+      // Always sample current scene TIME on each scheduled update (not a
+      // scaled clock); physics and fishing state therefore never slow down.
       frame++;
-      if (frame % this.normalEvery === 0) {
-        normals.update(time, wind);
+      if(frame===1||frame % Math.max(1,Math.trunc(this.vertexEvery))===0){
+        for(let i=0;i<pos.count;i++){
+          const x=baseXZ[i*2],z=baseXZ[i*2+1];
+          pos.setY(i,waveHeight(x,z,time,calmness,wind));
+        }
+        pos.needsUpdate=true;
+      }
+      // Flat vertex normals deliberately avoid zigzag shading artifacts.
+      // Detail lives in the rolling water normal map and live cube reflection.
+      if(frame===1||frame % Math.max(1,Math.trunc(this.normalEvery))===0){
+        normals.update(time,wind);
       }
     },
 

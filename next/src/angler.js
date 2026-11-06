@@ -10,6 +10,7 @@ import {habitat,chooseLakeSpecies,biteSeconds,speciesForecast,SPOT_NAMES} from '
 import {normalizeCatchLog,recordLanding,journalStats} from './sim/catchLog.mjs';
 import {LINE_SEGMENTS,lineCurve} from './sim/linePhysics.mjs';
 import {DOCKS} from './sim/boatPhysics.mjs';
+import {GRAPHICS_MODES,normalizeGraphicsMode} from './sim/graphics.mjs';
 import {LEAGUE_CUPS,MEDAL_LABELS,normalizeLeague,enterLeague,leagueWaterCast,leagueFishLanded,leagueMiss,abandonLeague,leagueProgress} from './sim/lakeLeague.mjs';
 
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
@@ -31,7 +32,7 @@ const GEAR=[
  {name:'APEX 钛合金旗舰',price:5800,drag:1.65,reel:1.68,range:1.42}
 ];
 const KEY='wildlands-next-2026';
-const firstSave=()=>({coins:1200,catches:0,best:0,gear:0,owned:[0],collection:{},location:0,bait:0,baitStock:{1:0,2:0,3:0},contracts:normalizeContracts(),catchLog:[],league:normalizeLeague(),boatOwned:false,boatFuel:100,boatDistance:0});
+const firstSave=()=>({coins:1200,catches:0,best:0,gear:0,owned:[0],collection:{},location:0,bait:0,baitStock:{1:0,2:0,3:0},contracts:normalizeContracts(),catchLog:[],league:normalizeLeague(),graphicsMode:'auto',boatOwned:false,boatFuel:100,boatDistance:0});
 function load(){
  try{
   const v=JSON.parse(localStorage.getItem(KEY)||'null');
@@ -39,7 +40,7 @@ function load(){
   const stock=baitStock(v.baitStock);
   const data={...firstSave(),...v,collection:typeof v.collection==='object'&&v.collection?v.collection:{},
    owned:Array.isArray(v.owned)?v.owned:[0],baitStock:stock,bait:selectedBait(v.bait,stock),
-   contracts:normalizeContracts(v.contracts),catchLog:normalizeCatchLog(v.catchLog),league:normalizeLeague(v.league),
+   contracts:normalizeContracts(v.contracts),catchLog:normalizeCatchLog(v.catchLog),league:normalizeLeague(v.league),graphicsMode:normalizeGraphicsMode(v.graphicsMode),
    boatOwned:v.boatOwned===true,boatFuel:clamp(Number.isFinite(v.boatFuel)?v.boatFuel:100,0,100),
    boatDistance:Math.max(0,Number.isFinite(v.boatDistance)?v.boatDistance:0)};
   // The float does not survive a reload. Settle the interrupted real cast as
@@ -95,6 +96,7 @@ export function createAngler(world){
  const ui=(id)=>document.getElementById(id);
  const state={phase:'ready',power:0,charging:false,reeling:false,elapsed:0,castT:0,waitT:0,biteT:0,distance:0,tension:.2,stress:0,slack:0,stamina:1,drag:.55,fish:null,weight:0,location:0,worldX:0,worldZ:0,started:false,model:'carbon-fiber',activeBait:0,boatMode:'shore',lastBoatStore:0};
  let saveData=load(),totalTime=0,toastTimer=null;
+  world.setGraphicsMode(saveData.graphicsMode);
  const previousBoatDistance=saveData.boatDistance;
  state.location=clamp(saveData.location|0,0,2);
  scene.add(camera); // first-person rod stays in the camera's local coordinate system
@@ -382,6 +384,31 @@ export function createAngler(world){
    store();updateFunds();contractsMenu();sound(1040,.18);toast('巡护奖励 +'+result.reward.toLocaleString()+' 金币');
   });
  }
+ function graphicsMenu(){
+  const sky=world.getState();
+  const options=GRAPHICS_MODES.map(entry=>{
+   const selected=entry.id===sky.graphicsMode;
+   return '<article class="graphics-option'+(selected?' selected':'')+'"><div class="graphics-option-head">'+
+    '<div><b>'+entry.label+'</b><small>'+entry.caption+'</small></div>'+
+    '<button type="button" data-graphics-mode="'+entry.id+'" '+(selected?'disabled aria-current="true"':'')+'>'+
+    (selected?'当前模式':'应用画质')+'</button></div></article>';
+  }).join('');
+  const g=sky.graphics;
+  openModal('3D 画质与性能 · GRAPHICS',
+   '<p class="contract-intro">画质选项会立即修改真实 Three.js 渲染负载，不会改变咬钩概率、鱼群数量或金币收入。默认「自动适配」根据帧率调整；低性能设备可选「流畅」。</p>'+
+   '<div class="graphics-metrics"><div><small>平均帧率</small><strong>'+sky.fps+' FPS</strong></div>'+
+   '<div><small>实际渲染比例</small><strong>'+sky.pixelRatio.toFixed(2)+' ×</strong></div>'+
+   '<div><small>水面反射</small><strong>每 '+g.reflectionInterval+' 帧</strong></div>'+
+   '<div><small>波浪更新</small><strong>每 '+g.vertexEvery+' 帧</strong></div></div>'+
+   '<div class="graphics-options">'+options+'</div>'+
+   '<p class="contract-intro graphics-note">画面设置会保存在本机存档。自动模式按负载动态调整；高画质并不保证高帧率。软件 WebGL 环境与移动设备会保持硬件安全上限。</p>');
+  document.querySelectorAll('[data-graphics-mode]').forEach(button=>button.onclick=()=>{
+   const mode=normalizeGraphicsMode(button.dataset.graphicsMode);
+   const applied=world.setGraphicsMode(mode);
+   saveData.graphicsMode=mode;store();
+   graphicsMenu();toast('画质已更新 · '+GRAPHICS_MODES.find(m=>m.id===mode).label+' · '+applied.tier);
+  });
+ }
  function leagueMenu(){
   const p=leagueProgress(saveData.league),a=p.active;
   const canChange=['ready','caught','failed'].includes(state.phase)&&state.boatMode!=='piloting';
@@ -594,7 +621,7 @@ export function createAngler(world){
 
  ui('close').onclick=()=>ui('modal').hidden=true;
  ui('modal').onclick=e=>{if(e.target===ui('modal'))ui('modal').hidden=true};
- ui('shop').onclick=shop;ui('journal').onclick=journal;ui('location').onclick=locationMenu;ui('contracts').onclick=contractsMenu;ui('league').onclick=leagueMenu;
+ ui('shop').onclick=shop;ui('journal').onclick=journal;ui('location').onclick=locationMenu;ui('contracts').onclick=contractsMenu;ui('league').onclick=leagueMenu;ui('graphics').onclick=graphicsMenu;
  ui('daytime').onclick=()=>{state.dayPartIndex=((state.dayPartIndex??0)+1)%4;const entries=[['晨光',.30],['正午',.50],['落日',.745],['星夜',.91]];const [name,value]=entries[state.dayPartIndex];world.setTimeOfDay(value,{resumeCycle:true});toast('时段调整 · '+name)};
  ui('weather').onclick=()=>{const w=(state.weatherLevel||0)+1;state.weatherLevel=w%3;world.setWeather([0,.52,.93][state.weatherLevel]);
   world.setWind([.20,.52,.85][state.weatherLevel]);toast(['晴日天气','山谷薄雾','风雨将至'][state.weatherLevel])};
@@ -760,6 +787,7 @@ export function createAngler(world){
   bait:saveData.bait,baitName:BAITS[saveData.bait].name,activeBait:state.activeBait,baitStock:{...saveData.baitStock},
   contractsReady:availableClaims(saveData.contracts,saveData.catches),contractsCompleted:CONTRACTS.filter(job=>saveData.contracts.claimed[job.id]).length,
    league:leagueProgress(saveData.league),
+   graphicsSaved:saveData.graphicsMode,
   recentCatchCount:saveData.catchLog.length,lineSegments:LINE_SEGMENTS,liveHabitat:habitat({
     bait:saveData.bait,depth:[.30,.22,.72][state.location],location:state.location,
     timeOfDay:world.getState().timeOfDay,weather:world.getState().weather,wind:world.getState().wind}).conditions,

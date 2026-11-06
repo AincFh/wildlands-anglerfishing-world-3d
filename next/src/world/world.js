@@ -6,6 +6,7 @@ import { clamp01 } from '../sim/controls.js';
 import { TimeCycle, fireflyVisibility, dawnFactor, nightFactor } from '../sim/timecycle.js';
 import { WeatherMachine } from '../sim/weather.js';
 import { QualityScaler, FpsMeter } from '../sim/quality.js';
+import { normalizeGraphicsMode, resolveGraphicsSettings } from '../sim/graphics.mjs';
 import { createTerrain } from './terrain.js';
 import { createWater } from './water.js';
 import { createForest } from './forest.js';
@@ -16,7 +17,7 @@ import { createFishingBoat } from './boat.js';
 import { createFishSchoolsView } from './fishSchools.js';
 import { CameraDirector } from './cameras.js';
 
-export function createWorld({ renderer, isMobile = false }) {
+export function createWorld({ renderer, isMobile = false, softwareGPU = false }) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 900);
   // Azimuth chosen so the low night moon sits inside the default orbit frame.
@@ -75,14 +76,27 @@ export function createWorld({ renderer, isMobile = false }) {
   // --- quality ---
   const scaler = new QualityScaler({ startTier: isMobile ? 1 : 0 });
   const fps = new FpsMeter(1.2);
+  let graphicsMode = 'auto';
+  let graphics = resolveGraphicsSettings({
+    mode:graphicsMode,adaptiveTier:scaler.tierIndex,isMobile,softwareGPU,
+    nativePixelRatio:window.devicePixelRatio||1
+  });
   let pixelRatio = 1;
 
-  function applyTier() {
-    const t = scaler.tier;
-    water.refreshInterval = t.cubeInterval;
-    water.normalEvery = t.normalMapEvery ?? t.normalEvery ?? 1;
-    sky.sunLight.castShadow = t.shadows && !isMobile;
-    return t;
+  function applyGraphics(){
+    graphics=resolveGraphicsSettings({
+      mode:graphicsMode,adaptiveTier:scaler.tierIndex,isMobile,softwareGPU,
+      nativePixelRatio:window.devicePixelRatio||1
+    });
+    water.refreshInterval=graphics.reflectionInterval;
+    water.normalEvery=graphics.normalMapEvery;
+    water.vertexEvery=graphics.vertexEvery;
+    sky.sunLight.castShadow=graphics.shadows;
+    if(Math.abs(graphics.pixelRatio-pixelRatio)>.001){
+      pixelRatio=graphics.pixelRatio;
+      renderer.setPixelRatio(pixelRatio);
+    }
+    return graphics;
   }
 
   // --- cameras ---
@@ -91,9 +105,9 @@ export function createWorld({ renderer, isMobile = false }) {
   director.followBoat(()=>boat.getState());
 
   // --- lighting/shadows ---
-  renderer.shadowMap.enabled = !isMobile;
+  renderer.shadowMap.enabled = !isMobile&&!softwareGPU;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  applyTier();
+  applyGraphics();
 
   let worldTime = 0;
   let forceSkyRefresh = true;
@@ -133,6 +147,11 @@ export function createWorld({ renderer, isMobile = false }) {
     setCameraMode(mode) {
       director.setMode(mode);
     },
+    setGraphicsMode(value){
+      graphicsMode=normalizeGraphicsMode(value);
+      applyGraphics();
+      return {...graphics};
+    },
 
     getState() {
       return {
@@ -145,7 +164,9 @@ export function createWorld({ renderer, isMobile = false }) {
         mist: state.mist,
         cameraMode: director.mode,
         cameraY: +camera.position.y.toFixed(3),
-        qualityTier: scaler.tierName,
+        qualityTier: graphics.tier,
+        graphicsMode,
+        graphics: {...graphics},
         fps: Math.round(fps.avg),
         rainCount: rain.activeCount,
         treeCount: forest.count,
@@ -161,7 +182,7 @@ export function createWorld({ renderer, isMobile = false }) {
       weather.update(dt);
 
       const tod = cycle.t;
-      const tier = scaler.tier;
+      const tier = graphics;
 
       sky.setFlash(weather.lightningFlash);
       sky.update(tod, weather.cloudCover, weather.darkness, dt, state.wind, forceSkyRefresh);
@@ -197,13 +218,8 @@ export function createWorld({ renderer, isMobile = false }) {
 
       // Adaptive quality
       const avg = fps.sample(dt);
-      const action = scaler.update(dt, avg);
-      if (action) applyTier();
-      const targetPR = Math.min(globalThis.devicePixelRatio || 1, scaler.tier.pixelRatioCap);
-      if (Math.abs(targetPR - pixelRatio) > 0.01) {
-        pixelRatio = targetPR;
-        renderer.setPixelRatio(pixelRatio);
-      }
+      const action = graphicsMode==='auto'?scaler.update(dt,avg):null;
+      if(action)applyGraphics();
 
       renderer.render(scene, camera);
     },

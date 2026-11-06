@@ -91,6 +91,22 @@ button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e9ffa
 .league-history-row{display:grid;grid-template-columns:minmax(0,1.35fr) 1fr auto;gap:12px;align-items:center;border-bottom:1px solid rgba(219,246,216,.15);padding:11px 0;font-size:12px}
 .league-history-row span{color:#cde4bf}.league-history-row small{color:#b1c6bc;text-align:right}
 @media(max-width:620px){.league-stats{gap:12px}.league-history-row{grid-template-columns:1fr 1fr}.league-history-row small{grid-column:1/-1;text-align:left}#leagueHud{font-size:10px}}
+
+/* Actual graphics controls. Accessible contrast and responsive viewport. */
+.graphics-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:17px 0}
+.graphics-metrics>div{padding:13px 10px;border:1px solid rgba(172,217,194,.23);border-radius:11px;background:rgba(40,77,67,.38)}
+.graphics-metrics small{display:block;font-size:10px;color:#b5c9c3;line-height:1.5}
+.graphics-metrics strong{display:block;font-size:16px;margin-top:4px;color:#e4f7d2;font-variant-numeric:tabular-nums}
+.graphics-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.graphics-option{padding:15px;border:1px solid rgba(179,215,188,.22);background:rgba(14,49,50,.61);border-radius:12px}
+.graphics-option.selected{border-color:#c3ecaa;background:rgba(56,93,68,.46)}
+.graphics-option-head{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;gap:13px;height:100%}
+.graphics-option b{display:block;font-size:14px;color:#effbeb}
+.graphics-option small{display:block;margin-top:6px;color:#b9cec3;font-size:11px;line-height:1.7}
+.graphics-option button{border:1px solid rgba(207,232,185,.38);border-radius:9px;padding:9px 12px;background:#28483f;color:#e6f4dc;font-weight:650;font-size:11px}
+.graphics-option button:disabled{background:#a1c48d;color:#13302a;cursor:default}
+.graphics-note{margin-top:17px}
+@media(max-width:620px){.graphics-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.graphics-options{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -99,7 +115,7 @@ button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e9ffa
 <div id="hud" hidden>
   <div class="topbar">
     <div class="brand"><span class="brand-mark">W</span><div><strong>WILDLANDS <span style="color:var(--accent)">NEXT</span></strong><small>山野钓行 / ALPINE FISHING RESERVE</small></div></div>
-    <div class="toptools"><span class="top-meta" id="clock">06:30 · 晴</span><button class="glass-btn" id="weather">天气</button><button class="glass-btn" id="daytime">时段</button><button class="glass-btn" id="location">探鱼图</button><button class="glass-btn" id="boatButton" type="button" aria-label="登船或控制抛锚">乘船出航</button><button class="glass-btn" id="boatExit" type="button" hidden>返回岸上</button><button class="glass-btn" id="boatRefuel" type="button" hidden>补给燃油</button><button class="glass-btn" id="observeFish" type="button" aria-pressed="false" title="跟随湖中真实游动的鱼群">水下观鱼</button><button class="glass-btn" id="contracts">湖泊委托</button><button class="glass-btn" id="league" type="button">湖泊锦标赛</button><button class="glass-btn" id="journal">图鉴 / 日志</button><button class="glass-btn" id="shop">装备</button></div>
+    <div class="toptools"><span class="top-meta" id="clock">06:30 · 晴</span><button class="glass-btn" id="weather">天气</button><button class="glass-btn" id="daytime">时段</button><button class="glass-btn" id="graphics" type="button" aria-label="3D 画质与性能设置">画质</button><button class="glass-btn" id="location">探鱼图</button><button class="glass-btn" id="boatButton" type="button" aria-label="登船或控制抛锚">乘船出航</button><button class="glass-btn" id="boatExit" type="button" hidden>返回岸上</button><button class="glass-btn" id="boatRefuel" type="button" hidden>补给燃油</button><button class="glass-btn" id="observeFish" type="button" aria-pressed="false" title="跟随湖中真实游动的鱼群">水下观鱼</button><button class="glass-btn" id="contracts">湖泊委托</button><button class="glass-btn" id="league" type="button">湖泊锦标赛</button><button class="glass-btn" id="journal">图鉴 / 日志</button><button class="glass-btn" id="shop">装备</button></div>
   </div>
   <div id="underwaterNote" hidden aria-live="polite"><b>LIVE UNDERWATER · 水下跟拍</b><span>正在追随真实游动的鱼群 · 点击「返回岸上」恢复钓鱼</span></div>
   <div id="event"><span class="eyebrow">LAKE VISTA · 钓点 01</span><strong id="eventTitle">薄雾在山谷间缓缓散开</strong><span id="eventText">观察湖面鱼群，把饵送到合适的水域。</span></div>
