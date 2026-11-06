@@ -127,7 +127,8 @@ test('the league state is JSON roundtrip stable without timers or cross-player s
 test('even enormous rare fish scores cannot bypass the required landed-fish count',()=>{
  let l=start('legend',5000,100).league;
  // Two excellent fish can clear the Gold score threshold; the league requires 5.
- for(const fish of [pike,{species:'湖鲟',weight:32,location:2,depth:.92}]){
+ for(const fish of [{species:'湖鲟',weight:45,location:2,depth:.92},
+  {species:'湖鲟',weight:44,location:2,depth:.91}]){
   const r=land(l,fish);l=r.league;
  }
  assert.ok(l.active.score>LEAGUE_CUPS[2].thresholds[2],l.active);
