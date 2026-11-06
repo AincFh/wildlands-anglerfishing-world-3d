@@ -101,6 +101,43 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         assert driver.find_element(By.ID,"leagueHud").is_displayed()
         driver.save_screenshot(str(ARTIFACTS / "02c-league-registration.png"))
         driver.find_element(By.ID,"close").click()
+        # GRAPHICS 0.7: controls must operate on actual rendering work, not
+        # cosmetic labels. Use the real modal buttons with no state injection.
+        driver.find_element(By.ID,"graphics").click()
+        assert len(driver.find_elements(By.CSS_SELECTOR,"[data-graphics-mode]"))==4
+        driver.find_element(By.CSS_SELECTOR,'[data-graphics-mode="performance"]').click()
+        graphics_low=driver.execute_script("""return (() => {
+          const w=window.__wildlandsNext,quality=w.world.getState();
+          const position=w.world.water.mesh.geometry.attributes.position;
+          const before=position.version;
+          for(let i=0;i<4;i++)w.world.water.update(22+i*.016,.75,.2);
+          return {mode:quality.graphicsMode,tier:quality.qualityTier,
+            graphics:quality.graphics,pixelRatio:quality.pixelRatio,
+            rendererPixelRatio:w.renderer.getPixelRatio(),
+            waterVertexVersionDelta:position.version-before,
+            reflectionEvery:w.world.water.refreshInterval,
+            normalEvery:w.world.water.normalEvery,
+            vertexEvery:w.world.water.vertexEvery,
+            shadows:w.world.sky.sunLight.castShadow};
+        })()""")
+        assert graphics_low["mode"]=="performance" and graphics_low["tier"]=="low",graphics_low
+        assert graphics_low["reflectionEvery"]==4 and graphics_low["normalEvery"]==3,graphics_low
+        assert graphics_low["vertexEvery"]==4 and graphics_low["waterVertexVersionDelta"]==1,graphics_low
+        assert not graphics_low["shadows"] and graphics_low["pixelRatio"]<=.75,graphics_low
+        assert abs(graphics_low["pixelRatio"]-graphics_low["rendererPixelRatio"])<.001,graphics_low
+        driver.save_screenshot(str(ARTIFACTS / "02d-real-graphics-settings.png"))
+        driver.find_element(By.CSS_SELECTOR,'[data-graphics-mode="balanced"]').click()
+        graphics_balanced=driver.execute_script("return window.__wildlandsNext.world.getState().graphics")
+        assert graphics_balanced["tier"]=="medium" and graphics_balanced["vertexEvery"]==2,graphics_balanced
+        driver.find_element(By.CSS_SELECTOR,'[data-graphics-mode="cinematic"]').click()
+        graphics_high=driver.execute_script("return window.__wildlandsNext.world.getState().graphics")
+        assert graphics_high["tier"]=="high" and graphics_high["vertexEvery"]==1,graphics_high
+        assert graphics_high["reflectionInterval"]==2 and graphics_high["normalMapEvery"]==1,graphics_high
+        # Software GPU remains protected even when "high" is chosen.
+        assert graphics_high["pixelRatio"]<=.75 and not graphics_high["shadows"],graphics_high
+        driver.find_element(By.CSS_SELECTOR,'[data-graphics-mode="performance"]').click()
+        driver.find_element(By.ID,"close").click()
+
         # The underwater mode must physically follow a real fish and make the
         # rod unavailable; returning to shore must restore the ready state.
         driver.find_element(By.ID,"observeFish").click()
@@ -347,6 +384,18 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         saved_boat=driver.execute_script("""return JSON.parse(
           localStorage.getItem('wildlands-next-2026'))""")
         assert saved_boat["boatOwned"] and saved_boat["boatFuel"]<100,saved_boat
+        assert saved_boat["graphicsMode"]=="performance",saved_boat
+        # A fresh WebGL boot must restore the same manual renderer policy.
+        driver.refresh()
+        for _ in range(65):
+            time.sleep(.5)
+            graphics_restored=driver.execute_script("""return window.__wildlandsNext?.world?.getState()?.graphics""")
+            if graphics_restored:break
+        else:
+            raise AssertionError("Graphics profile did not boot after save reload")
+        assert graphics_restored["mode"]=="performance" and graphics_restored["vertexEvery"]==4,graphics_restored
+        assert driver.execute_script("return window.__wildlandsNext.getState().graphicsSaved")=="performance"
+        driver.save_screenshot(str(ARTIFACTS / "12-graphics-persisted.png"))
 
         errors=[entry["message"] for entry in driver.get_log("browser")
                  if entry["level"] == "SEVERE" and "favicon" not in entry["message"]]
@@ -354,7 +403,8 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         # procedural rod fallback is supported. Otherwise block console errors.
         core_errors=[msg for msg in errors if not ("22406/v1/model.glb" in msg or "net::ERR" in msg)]
         assert not core_errors, "Severe browser JS or WebGL errors: "+str(core_errors[:15])
-        report={"scene":world,"ready":ready,"caught":caught,"mobile":mobile,"errors":errors}
+        report={"scene":world,"ready":ready,"caught":caught,"mobile":mobile,
+          "graphicsLow":graphics_low,"graphicsRestored":graphics_restored,"errors":errors}
         (ARTIFACTS/"report.json").write_text(json.dumps(report,ensure_ascii=False,indent=2))
         print(json.dumps(report,ensure_ascii=False,indent=2))
     finally:
