@@ -10,6 +10,7 @@ import {habitat,chooseLakeSpecies,biteSeconds,speciesForecast,SPOT_NAMES} from '
 import {normalizeCatchLog,recordLanding,journalStats} from './sim/catchLog.mjs';
 import {LINE_SEGMENTS,lineCurve} from './sim/linePhysics.mjs';
 import {DOCKS} from './sim/boatPhysics.mjs';
+import {LEAGUE_CUPS,MEDAL_LABELS,normalizeLeague,enterLeague,leagueWaterCast,leagueFishLanded,leagueMiss,abandonLeague,leagueProgress} from './sim/lakeLeague.mjs';
 
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -30,8 +31,27 @@ const GEAR=[
  {name:'APEX 钛合金旗舰',price:5800,drag:1.65,reel:1.68,range:1.42}
 ];
 const KEY='wildlands-next-2026';
-const firstSave=()=>({coins:1200,catches:0,best:0,gear:0,owned:[0],collection:{},location:0,bait:0,baitStock:{1:0,2:0,3:0},contracts:normalizeContracts(),catchLog:[],boatOwned:false,boatFuel:100,boatDistance:0});
-function load(){try{const v=JSON.parse(localStorage.getItem(KEY)||'null');if(!v||typeof v!=='object')return firstSave();const stock=baitStock(v.baitStock);return {...firstSave(),...v,collection:typeof v.collection==='object'&&v.collection?v.collection:{},owned:Array.isArray(v.owned)?v.owned:[0],baitStock:stock,bait:selectedBait(v.bait,stock),contracts:normalizeContracts(v.contracts),catchLog:normalizeCatchLog(v.catchLog),boatOwned:v.boatOwned===true,boatFuel:clamp(Number.isFinite(v.boatFuel)?v.boatFuel:100,0,100),boatDistance:Math.max(0,Number.isFinite(v.boatDistance)?v.boatDistance:0)}}catch{return firstSave()}}
+const firstSave=()=>({coins:1200,catches:0,best:0,gear:0,owned:[0],collection:{},location:0,bait:0,baitStock:{1:0,2:0,3:0},contracts:normalizeContracts(),catchLog:[],league:normalizeLeague(),boatOwned:false,boatFuel:100,boatDistance:0});
+function load(){
+ try{
+  const v=JSON.parse(localStorage.getItem(KEY)||'null');
+  if(!v||typeof v!=='object')return firstSave();
+  const stock=baitStock(v.baitStock);
+  const data={...firstSave(),...v,collection:typeof v.collection==='object'&&v.collection?v.collection:{},
+   owned:Array.isArray(v.owned)?v.owned:[0],baitStock:stock,bait:selectedBait(v.bait,stock),
+   contracts:normalizeContracts(v.contracts),catchLog:normalizeCatchLog(v.catchLog),league:normalizeLeague(v.league),
+   boatOwned:v.boatOwned===true,boatFuel:clamp(Number.isFinite(v.boatFuel)?v.boatFuel:100,0,100),
+   boatDistance:Math.max(0,Number.isFinite(v.boatDistance)?v.boatDistance:0)};
+  // The float does not survive a reload. Settle the interrupted real cast as
+  // a missed attempt and store the result once; never pay twice on reloading.
+  if(data.league.active?.pending){
+   const settled=leagueMiss(data.league);
+   data.league=settled.league;data.coins+=settled.reward;
+   try{localStorage.setItem(KEY,JSON.stringify(data))}catch{}
+  }
+  return data;
+ }catch{return firstSave()}
+}
 const FISHING_ROD='https://cdn.3dassets.dev/assets/22406/v1/model.glb';
 function cylinderBetween(a,b,r0,r1,material,segments=8){
  const len=a.distanceTo(b),geo=new THREE.CylinderGeometry(r1,r0,len,segments);
@@ -122,8 +142,20 @@ export function createAngler(world){
    if(!AC)return;const c=sound.ctx||(sound.ctx=new AC());const osc=c.createOscillator(),gain=c.createGain();
    osc.type='sine';osc.frequency.setValueAtTime(freq,c.currentTime);gain.gain.setValueAtTime(.013,c.currentTime);
    gain.gain.exponentialRampToValueAtTime(.001,c.currentTime+len);osc.connect(gain).connect(c.destination);osc.start();osc.stop(c.currentTime+len)}catch{}}
- function updateFunds(){ui('funds').textContent='金币 '+saveData.coins.toLocaleString()+' · 鱼获 '+saveData.catches;
-  if(ui('contracts')){const ready=availableClaims(saveData.contracts,saveData.catches);ui('contracts').textContent=ready?'委托 · '+ready+' 可领取':'湖泊委托'}const b=BAITS[saveData.bait];const n=saveData.bait===0?'∞':(saveData.baitStock[saveData.bait]||0);if(ui('baitHud'))ui('baitHud').textContent='当前饵料 '+b.name+' · '+n+' 份 · 装备中可购买补充' }
+ function updateFunds(){
+  ui('funds').textContent='金币 '+saveData.coins.toLocaleString()+' · 鱼获 '+saveData.catches;
+  if(ui('contracts')){const ready=availableClaims(saveData.contracts,saveData.catches);
+   ui('contracts').textContent=ready?'委托 · '+ready+' 可领取':'湖泊委托'}
+  const b=BAITS[saveData.bait],n=saveData.bait===0?'∞':(saveData.baitStock[saveData.bait]||0);
+  if(ui('baitHud'))ui('baitHud').textContent='当前饵料 '+b.name+' · '+n+' 份 · 装备中可购买补充';
+  const p=leagueProgress(saveData.league);
+  if(ui('league'))ui('league').textContent=p.active?'锦标赛 · '+p.active.catches+'/'+p.active.goal:'湖泊锦标赛';
+  if(ui('leagueHud')){
+   ui('leagueHud').hidden=!p.active;
+   if(p.active)ui('leagueHud').textContent=p.active.name+' · '+p.active.score+' 分 · '+p.active.catches+'/'+p.active.goal+
+    ' 尾 · '+p.active.attempts+'/'+p.active.limit+' 次有效抛投';
+  }
+ }
  function setPhase(v){state.phase=v;state.elapsed=0;state.charging=false;state.reeling=false;ui('fight').hidden=v!=='fighting';
   const labels={ready:'抛竿',charging:'蓄力',flying:'抛投中',waiting:'收回',bite:'提竿!',fighting:'收线',caught:'继续',failed:'重试'};
   ui('cast').textContent=labels[v]||'抛竿';ui('controlHelp').textContent={
