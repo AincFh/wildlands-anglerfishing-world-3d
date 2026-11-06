@@ -243,6 +243,7 @@ export function createAngler(world){
   const used=consumeBait(saveData.baitStock,state.activeBait);
   state.activeBait=used.id;saveData.baitStock=used.stock;
   if(saveData.bait!==0&&!(used.stock[saveData.bait]>0))saveData.bait=0;
+  saveData.league=leagueWaterCast(saveData.league).league;
   store();updateFunds();
   const conditions=world.getState();
   world.shoals.setBait({x:state.worldX,z:state.worldZ});
@@ -267,10 +268,19 @@ export function createAngler(world){
   fishModel.setSpecies(idx);fishModel.animate(totalTime,.92);
   fishModel.material.color.setHex(state.fish.color);fishModel.group.visible=true;sound(780,.16);
  }
+ function settleLeagueMiss(){
+  if(!saveData.league.active?.pending)return;
+  const outcome=leagueMiss(saveData.league);
+  saveData.league=outcome.league;
+  if(outcome.reward)saveData.coins+=outcome.reward;
+  store();updateFunds();
+  if(outcome.finished)toast('锦标赛结束 · '+MEDAL_LABELS[outcome.medal]+' · 奖励 '+outcome.reward+' 金币');
+ }
  function fail(message){
   world.shoals.settleHook(false);world.shoals.setBait(null);world.shoals.scare(null);
   setPhase('failed');state.fish=null;fishModel.group.visible=false;bobber.group.visible=false;line.visible=false;
-  hint('本次失败',message,'点击中央按钮重新抛竿');event('鱼逃脱了',message+'。改变泄力与收线节奏，下一次会更好。');sound(200,.24);
+  hint('本次失败',message,'点击中央按钮重新抛竿');event('鱼逃脱了',message+'。改变泄力与收线节奏，下一次会更好。');
+  settleLeagueMiss();sound(200,.24);
  }
  function land(){
   world.shoals.settleHook(true);world.shoals.setBait(null);world.shoals.scare(null);
@@ -281,6 +291,11 @@ export function createAngler(world){
   entry.count++;entry.best=Math.max(entry.best,state.weight);saveData.collection[fish.name]=entry;
   const mission=recordCatch(saveData.contracts,{species:fish.name,weight:state.weight,location:state.location,bait:state.activeBait,depth:state.depth},saveData.catches);
   saveData.contracts=mission.progress;
+  const cupResult=leagueFishLanded(saveData.league,{
+   species:fish.name,weight:state.weight,location:state.location,depth:state.depth,bait:state.activeBait
+  });
+  saveData.league=cupResult.league;
+  if(cupResult.reward)saveData.coins+=cupResult.reward;
   const env=state.castEnvironment||world.getState();
   saveData.catchLog=recordLanding(saveData.catchLog,{species:fish.name,weight:state.weight,
    location:state.location,bait:state.activeBait,depth:state.depth,time:env.timeOfDay,
@@ -293,11 +308,16 @@ export function createAngler(world){
   fishModel.group.rotation.set(.03,1.22,0);
   fishModel.group.scale.setScalar(.94);
   fishModel.group.visible=true;
-  hint('成功上岸','捕获 '+fish.name+' · '+state.weight.toFixed(2)+' kg','获得 '+payout+' 枚金币 · 点击继续');
-  event('完美上岸 · '+fish.name,'重量 '+state.weight.toFixed(2)+' kg · 奖励 '+payout+' 金币');updateFunds();sound(970,.3);
-  playCue('catch');toast(mission.completed.length?'委托完成 '+mission.completed.length+' 项 · 前往委托台领奖':'收获 '+fish.name+' '+state.weight.toFixed(2)+' kg！');
+  const leagueInfo=cupResult.ok?' · 锦标赛 +'+cupResult.scoreGain+' 分':'';
+  hint('成功上岸','捕获 '+fish.name+' · '+state.weight.toFixed(2)+' kg','获得 '+(payout+cupResult.reward)+' 枚金币'+leagueInfo+' · 点击继续');
+  event('完美上岸 · '+fish.name,'重量 '+state.weight.toFixed(2)+' kg · 奖励 '+payout+' 金币'+leagueInfo);
+  updateFunds();sound(970,.3);playCue('catch');
+  toast(cupResult.finished?'锦标赛 '+MEDAL_LABELS[cupResult.medal]+' · 奖励 '+cupResult.reward+' 金币':
+   mission.completed.length?'委托完成 '+mission.completed.length+' 项 · 前往委托台领奖':
+   cupResult.ok?'赛事积分 +'+cupResult.scoreGain+' 分':'收获 '+fish.name+' '+state.weight.toFixed(2)+' kg！');
  }
  function reset(){world.shoals.settleHook(false);world.shoals.setBait(null);world.shoals.scare(null);bobber.group.visible=false;fishModel.group.visible=false;scene.add(fishModel.group);fishModel.group.scale.setScalar(1);line.visible=false;state.fish=null;setPhase('ready');
+  settleLeagueMiss();
   hint('准备抛投','寻找水面波纹，选择抛投力度','WASD 沿湖岸移动 · 拖动环顾 · 空格蓄力')}
  function adjustDrag(n){state.drag=clamp(state.drag+n,.2,.90);ui('drag').textContent='泄力 '+Math.round(state.drag*100)+'%';sound(460,.035)}
  function openModal(title,html){const pane=ui('modal');ui('modalTitle').textContent=title;ui('modalBody').innerHTML=html;pane.hidden=false}
