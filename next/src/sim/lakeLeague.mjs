@@ -65,7 +65,10 @@ function resolve(league,{forfeit=false,endedAt=new Date().toISOString()}={}){
  const active=league.active;
  if(!active)return{league,reward:0,finished:false,medal:null,round:null};
  const cup=validCup(active.id);
- const medal=forfeit?'abandoned':leagueRank(cup,active.score);
+ // Score determines medal quality only AFTER the required number of real
+ // catches has been landed. One monster fish can earn a high score but cannot
+ // bypass the tournament's stated 3/4/5 fish objective.
+ const medal=forfeit?'abandoned':active.catches<cup.goal?'none':leagueRank(cup,active.score);
  const prize=MEDALS.includes(medal)?cup.prizes[MEDALS.indexOf(medal)]:0;
  const round={id:cup.id,score:active.score,catches:active.catches,
   attempts:active.attempts,medal,prize,endedAt};
