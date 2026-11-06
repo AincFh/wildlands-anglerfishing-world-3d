@@ -22,10 +22,10 @@ function boot(){
   renderer.outputColorSpace=THREE.SRGBColorSpace;
   const softwareGPU=!!navigator.webdriver;
   const mobile=softwareGPU||matchMedia('(pointer:coarse)').matches||window.innerWidth<700;
-  world=createWorld({renderer,isMobile:mobile});
+  world=createWorld({renderer,isMobile:mobile,softwareGPU});
   shore=createShoreDetails(world.terrain.heightAt,{lowPower:softwareGPU||mobile});
   world.scene.add(shore.group);
-  if(softwareGPU){world.water.cubeEnabled=false;world.setWildlife(.42);renderer.setPixelRatio(.7)}
+  if(softwareGPU){world.water.cubeEnabled=false;world.setWildlife(.42)}
   angler=createAngler(world);
   // Only request optional external forest assets when explicitly enabled; many
   // third-party hosts disallow CORS and must not generate console errors.
@@ -33,7 +33,7 @@ function boot(){
     enhanceForest(world,{softwareGPU,mobile}).then(result=>{forestState=result;});
   }else forestState={loaded:false,instances:0,source:'local-volume-forest',disabledReason:'external assets require CORS'};
   world.setTimeOfDay(.31,{resumeCycle:true});world.setWeather(.05);world.setWind(.26);
-  world.setCalmness(.74);world.setWildlife(.80);
+  world.setCalmness(.74);if(!softwareGPU)world.setWildlife(.80);
   const resize=()=>world.resize(window.innerWidth,window.innerHeight);
   window.addEventListener('resize',resize);resize();
  }catch(err){crash(err);return}
@@ -64,7 +64,7 @@ function boot(){
   test:{setWeather:v=>world.setWeather(v),forceBite:()=>angler.debug.forceBite(),
        forceFish:()=>angler.debug.forceFish(),forceCatch:()=>angler.debug.forceCatch(),
        setCoins:n=>angler.debug.setCoins(n),moveLocation:i=>angler.viewLocation(i)},
-  version:'next-0.6.0'
+  version:'next-0.7.0'
  };
 }
 boot();
