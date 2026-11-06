@@ -10,6 +10,7 @@ import {habitat,chooseLakeSpecies,biteSeconds,speciesForecast,SPOT_NAMES} from '
 import {normalizeCatchLog,recordLanding,journalStats} from './sim/catchLog.mjs';
 import {LINE_SEGMENTS,lineCurve} from './sim/linePhysics.mjs';
 import {DOCKS} from './sim/boatPhysics.mjs';
+import {LEAGUE_CUPS,MEDAL_LABELS,normalizeLeague,enterLeague,leagueWaterCast,leagueFishLanded,leagueMiss,abandonLeague,leagueProgress} from './sim/lakeLeague.mjs';
 
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -30,8 +31,27 @@ const GEAR=[
  {name:'APEX 钛合金旗舰',price:5800,drag:1.65,reel:1.68,range:1.42}
 ];
 const KEY='wildlands-next-2026';
-const firstSave=()=>({coins:1200,catches:0,best:0,gear:0,owned:[0],collection:{},location:0,bait:0,baitStock:{1:0,2:0,3:0},contracts:normalizeContracts(),catchLog:[],boatOwned:false,boatFuel:100,boatDistance:0});
-function load(){try{const v=JSON.parse(localStorage.getItem(KEY)||'null');if(!v||typeof v!=='object')return firstSave();const stock=baitStock(v.baitStock);return {...firstSave(),...v,collection:typeof v.collection==='object'&&v.collection?v.collection:{},owned:Array.isArray(v.owned)?v.owned:[0],baitStock:stock,bait:selectedBait(v.bait,stock),contracts:normalizeContracts(v.contracts),catchLog:normalizeCatchLog(v.catchLog),boatOwned:v.boatOwned===true,boatFuel:clamp(Number.isFinite(v.boatFuel)?v.boatFuel:100,0,100),boatDistance:Math.max(0,Number.isFinite(v.boatDistance)?v.boatDistance:0)}}catch{return firstSave()}}
+const firstSave=()=>({coins:1200,catches:0,best:0,gear:0,owned:[0],collection:{},location:0,bait:0,baitStock:{1:0,2:0,3:0},contracts:normalizeContracts(),catchLog:[],league:normalizeLeague(),boatOwned:false,boatFuel:100,boatDistance:0});
+function load(){
+ try{
+  const v=JSON.parse(localStorage.getItem(KEY)||'null');
+  if(!v||typeof v!=='object')return firstSave();
+  const stock=baitStock(v.baitStock);
+  const data={...firstSave(),...v,collection:typeof v.collection==='object'&&v.collection?v.collection:{},
+   owned:Array.isArray(v.owned)?v.owned:[0],baitStock:stock,bait:selectedBait(v.bait,stock),
+   contracts:normalizeContracts(v.contracts),catchLog:normalizeCatchLog(v.catchLog),league:normalizeLeague(v.league),
+   boatOwned:v.boatOwned===true,boatFuel:clamp(Number.isFinite(v.boatFuel)?v.boatFuel:100,0,100),
+   boatDistance:Math.max(0,Number.isFinite(v.boatDistance)?v.boatDistance:0)};
+  // The float does not survive a reload. Settle the interrupted real cast as
+  // a missed attempt and store the result once; never pay twice on reloading.
+  if(data.league.active?.pending){
+   const settled=leagueMiss(data.league);
+   data.league=settled.league;data.coins+=settled.reward;
+   try{localStorage.setItem(KEY,JSON.stringify(data))}catch{}
+  }
+  return data;
+ }catch{return firstSave()}
+}
 const FISHING_ROD='https://cdn.3dassets.dev/assets/22406/v1/model.glb';
 function cylinderBetween(a,b,r0,r1,material,segments=8){
  const len=a.distanceTo(b),geo=new THREE.CylinderGeometry(r1,r0,len,segments);
@@ -122,8 +142,20 @@ export function createAngler(world){
    if(!AC)return;const c=sound.ctx||(sound.ctx=new AC());const osc=c.createOscillator(),gain=c.createGain();
    osc.type='sine';osc.frequency.setValueAtTime(freq,c.currentTime);gain.gain.setValueAtTime(.013,c.currentTime);
    gain.gain.exponentialRampToValueAtTime(.001,c.currentTime+len);osc.connect(gain).connect(c.destination);osc.start();osc.stop(c.currentTime+len)}catch{}}
- function updateFunds(){ui('funds').textContent='金币 '+saveData.coins.toLocaleString()+' · 鱼获 '+saveData.catches;
-  if(ui('contracts')){const ready=availableClaims(saveData.contracts,saveData.catches);ui('contracts').textContent=ready?'委托 · '+ready+' 可领取':'湖泊委托'}const b=BAITS[saveData.bait];const n=saveData.bait===0?'∞':(saveData.baitStock[saveData.bait]||0);if(ui('baitHud'))ui('baitHud').textContent='当前饵料 '+b.name+' · '+n+' 份 · 装备中可购买补充' }
+ function updateFunds(){
+  ui('funds').textContent='金币 '+saveData.coins.toLocaleString()+' · 鱼获 '+saveData.catches;
+  if(ui('contracts')){const ready=availableClaims(saveData.contracts,saveData.catches);
+   ui('contracts').textContent=ready?'委托 · '+ready+' 可领取':'湖泊委托'}
+  const b=BAITS[saveData.bait],n=saveData.bait===0?'∞':(saveData.baitStock[saveData.bait]||0);
+  if(ui('baitHud'))ui('baitHud').textContent='当前饵料 '+b.name+' · '+n+' 份 · 装备中可购买补充';
+  const p=leagueProgress(saveData.league);
+  if(ui('league'))ui('league').textContent=p.active?'锦标赛 · '+p.active.catches+'/'+p.active.goal:'湖泊锦标赛';
+  if(ui('leagueHud')){
+   ui('leagueHud').hidden=!p.active;
+   if(p.active)ui('leagueHud').textContent=p.active.name+' · '+p.active.score+' 分 · '+p.active.catches+'/'+p.active.goal+
+    ' 尾 · '+p.active.attempts+'/'+p.active.limit+' 次有效抛投';
+  }
+ }
  function setPhase(v){state.phase=v;state.elapsed=0;state.charging=false;state.reeling=false;ui('fight').hidden=v!=='fighting';
   const labels={ready:'抛竿',charging:'蓄力',flying:'抛投中',waiting:'收回',bite:'提竿!',fighting:'收线',caught:'继续',failed:'重试'};
   ui('cast').textContent=labels[v]||'抛竿';ui('controlHelp').textContent={
@@ -211,6 +243,7 @@ export function createAngler(world){
   const used=consumeBait(saveData.baitStock,state.activeBait);
   state.activeBait=used.id;saveData.baitStock=used.stock;
   if(saveData.bait!==0&&!(used.stock[saveData.bait]>0))saveData.bait=0;
+  saveData.league=leagueWaterCast(saveData.league).league;
   store();updateFunds();
   const conditions=world.getState();
   world.shoals.setBait({x:state.worldX,z:state.worldZ});
@@ -235,10 +268,19 @@ export function createAngler(world){
   fishModel.setSpecies(idx);fishModel.animate(totalTime,.92);
   fishModel.material.color.setHex(state.fish.color);fishModel.group.visible=true;sound(780,.16);
  }
+ function settleLeagueMiss(){
+  if(!saveData.league.active?.pending)return;
+  const outcome=leagueMiss(saveData.league);
+  saveData.league=outcome.league;
+  if(outcome.reward)saveData.coins+=outcome.reward;
+  store();updateFunds();
+  if(outcome.finished)toast('锦标赛结束 · '+MEDAL_LABELS[outcome.medal]+' · 奖励 '+outcome.reward+' 金币');
+ }
  function fail(message){
   world.shoals.settleHook(false);world.shoals.setBait(null);world.shoals.scare(null);
   setPhase('failed');state.fish=null;fishModel.group.visible=false;bobber.group.visible=false;line.visible=false;
-  hint('本次失败',message,'点击中央按钮重新抛竿');event('鱼逃脱了',message+'。改变泄力与收线节奏，下一次会更好。');sound(200,.24);
+  hint('本次失败',message,'点击中央按钮重新抛竿');event('鱼逃脱了',message+'。改变泄力与收线节奏，下一次会更好。');
+  settleLeagueMiss();sound(200,.24);
  }
  function land(){
   world.shoals.settleHook(true);world.shoals.setBait(null);world.shoals.scare(null);
@@ -249,6 +291,11 @@ export function createAngler(world){
   entry.count++;entry.best=Math.max(entry.best,state.weight);saveData.collection[fish.name]=entry;
   const mission=recordCatch(saveData.contracts,{species:fish.name,weight:state.weight,location:state.location,bait:state.activeBait,depth:state.depth},saveData.catches);
   saveData.contracts=mission.progress;
+  const cupResult=leagueFishLanded(saveData.league,{
+   species:fish.name,weight:state.weight,location:state.location,depth:state.depth,bait:state.activeBait
+  });
+  saveData.league=cupResult.league;
+  if(cupResult.reward)saveData.coins+=cupResult.reward;
   const env=state.castEnvironment||world.getState();
   saveData.catchLog=recordLanding(saveData.catchLog,{species:fish.name,weight:state.weight,
    location:state.location,bait:state.activeBait,depth:state.depth,time:env.timeOfDay,
@@ -261,11 +308,16 @@ export function createAngler(world){
   fishModel.group.rotation.set(.03,1.22,0);
   fishModel.group.scale.setScalar(.94);
   fishModel.group.visible=true;
-  hint('成功上岸','捕获 '+fish.name+' · '+state.weight.toFixed(2)+' kg','获得 '+payout+' 枚金币 · 点击继续');
-  event('完美上岸 · '+fish.name,'重量 '+state.weight.toFixed(2)+' kg · 奖励 '+payout+' 金币');updateFunds();sound(970,.3);
-  playCue('catch');toast(mission.completed.length?'委托完成 '+mission.completed.length+' 项 · 前往委托台领奖':'收获 '+fish.name+' '+state.weight.toFixed(2)+' kg！');
+  const leagueInfo=cupResult.ok?' · 锦标赛 +'+cupResult.scoreGain+' 分':'';
+  hint('成功上岸','捕获 '+fish.name+' · '+state.weight.toFixed(2)+' kg','获得 '+(payout+cupResult.reward)+' 枚金币'+leagueInfo+' · 点击继续');
+  event('完美上岸 · '+fish.name,'重量 '+state.weight.toFixed(2)+' kg · 奖励 '+payout+' 金币'+leagueInfo);
+  updateFunds();sound(970,.3);playCue('catch');
+  toast(cupResult.finished?'锦标赛 '+MEDAL_LABELS[cupResult.medal]+' · 奖励 '+cupResult.reward+' 金币':
+   mission.completed.length?'委托完成 '+mission.completed.length+' 项 · 前往委托台领奖':
+   cupResult.ok?'赛事积分 +'+cupResult.scoreGain+' 分':'收获 '+fish.name+' '+state.weight.toFixed(2)+' kg！');
  }
  function reset(){world.shoals.settleHook(false);world.shoals.setBait(null);world.shoals.scare(null);bobber.group.visible=false;fishModel.group.visible=false;scene.add(fishModel.group);fishModel.group.scale.setScalar(1);line.visible=false;state.fish=null;setPhase('ready');
+  settleLeagueMiss();
   hint('准备抛投','寻找水面波纹，选择抛投力度','WASD 沿湖岸移动 · 拖动环顾 · 空格蓄力')}
  function adjustDrag(n){state.drag=clamp(state.drag+n,.2,.90);ui('drag').textContent='泄力 '+Math.round(state.drag*100)+'%';sound(460,.035)}
  function openModal(title,html){const pane=ui('modal');ui('modalTitle').textContent=title;ui('modalBody').innerHTML=html;pane.hidden=false}
@@ -328,6 +380,56 @@ export function createAngler(world){
    if(!result.ok)return;
    saveData.contracts=result.progress;saveData.coins+=result.reward;
    store();updateFunds();contractsMenu();sound(1040,.18);toast('巡护奖励 +'+result.reward.toLocaleString()+' 金币');
+  });
+ }
+ function leagueMenu(){
+  const p=leagueProgress(saveData.league),a=p.active;
+  const canChange=['ready','caught','failed'].includes(state.phase)&&state.boatMode!=='piloting';
+  const activeHtml=a?'<section class="league-active"><div class="contract-kicker">ACTIVE MATCH / 正在比赛</div>'+
+   '<b>'+a.name+'</b><div class="league-stats"><span>积分 <strong>'+a.score+'</strong></span>'+
+   '<span>鱼获 <strong>'+a.catches+'/'+a.goal+'</strong></span>'+
+   '<span>有效抛投 <strong>'+a.attempts+'/'+a.limit+'</strong></span></div>'+
+   '<div class="contract-track"><span style="width:'+Math.round(a.catches/a.goal*100)+'%"></span></div>'+
+   '<small>当前等级 '+MEDAL_LABELS[a.projectedMedal]+' · 鱼漂真正入水才计一次抛投；断线、脱钩和主动收回均会消耗机会。</small>'+
+   '<button type="button" class="league-forfeit" data-league-forfeit '+(!canChange?'disabled':'')+'>放弃本轮 · 不退报名费</button></section>':
+   '<p class="contract-intro">参加三档湖泊锦标赛，使用真实鱼获重量、鱼种稀有度、钓点和水深计算成绩。报名后即使关闭游戏也会保留，断线或提前收竿会计作未成功的一次有效抛投。所有排名仅属于本机玩家，不是在线榜单。</p>';
+  const cards=LEAGUE_CUPS.map(c=>{
+   const locked=saveData.catches<c.unlock,canPay=saveData.coins>=c.fee,playing=!!a;
+   const medals=c.thresholds.map((n,i)=>MEDAL_LABELS[['bronze','silver','gold'][i]]+' '+n+' 分 / '+c.prizes[i]+' 金币').join(' · ');
+   const best=p.best[c.id]||0;
+   const disabled=playing||locked||!canPay||!canChange;
+   const caption=locked?'累计鱼获 '+c.unlock+' 尾后解锁':playing?'结束当前锦标赛后报名':!canPay?'金币不足':'报名参赛 · '+c.fee+' 金币';
+   return '<article class="item league-cup'+(a?.id===c.id?' active':'')+'"><div class="contract-kicker">'+c.en+'</div>'+
+    '<b>'+c.name+'</b><small>'+c.detail+'</small>'+
+    '<small>本地个人最佳 '+best+' 分 · '+c.goal+' 条上岸 / 最多 '+c.limit+' 次入水</small>'+
+    '<small class="league-medals">'+medals+'</small>'+
+    '<button type="button" data-league-start="'+c.id+'" '+(disabled?'disabled':'')+'>'+caption+'</button></article>';
+  }).join('');
+  const history=p.recent.map(r=>{
+   const c=LEAGUE_CUPS.find(x=>x.id===r.id);
+   return '<div class="league-history-row"><b>'+c.name+'</b><span>'+r.score+' 分 · '+MEDAL_LABELS[r.medal]+'</span>'+
+    '<small>'+r.catches+' 尾 / '+r.attempts+' 次 · 奖励 '+r.prize+' 金币</small></div>';
+  }).join('');
+  openModal('湖泊锦标赛 · LAKE LEAGUE',
+   activeHtml+'<div class="catalog">'+cards+'</div>'+
+   '<h3 class="catalog-title" style="margin-top:23px">PERSONAL RESULTS / 本机参赛履历</h3>'+
+   (history||'<p class="contract-intro">尚无比赛记录。完成一轮后，奖牌和最佳积分将长期保存在本地。</p>'));
+  document.querySelectorAll('[data-league-start]').forEach(button=>button.onclick=()=>{
+   if(!canChange)return;
+   const result=enterLeague(saveData.league,button.dataset.leagueStart,saveData.coins,saveData.catches);
+   if(!result.ok){toast('无法报名 · 请检查鱼获解锁条件或金币');return}
+   saveData.league=result.league;saveData.coins=result.coins;
+   store();updateFunds();leagueMenu();sound(610,.11);
+   toast('报名成功 · '+result.cup.name+' · 开始真实钓鱼计分');
+  });
+  document.querySelectorAll('[data-league-forfeit]').forEach(button=>button.onclick=()=>{
+   if(!canChange)return;
+   if(button.dataset.confirm!=='yes'){
+    button.dataset.confirm='yes';button.textContent='再次点击确认退赛 · 失去报名费';return;
+   }
+   const result=abandonLeague(saveData.league);
+   saveData.league=result.league;store();updateFunds();leagueMenu();
+   toast('已退出锦标赛 · 本轮未获奖');
   });
  }
  function locationMenu(){
@@ -492,7 +594,7 @@ export function createAngler(world){
 
  ui('close').onclick=()=>ui('modal').hidden=true;
  ui('modal').onclick=e=>{if(e.target===ui('modal'))ui('modal').hidden=true};
- ui('shop').onclick=shop;ui('journal').onclick=journal;ui('location').onclick=locationMenu;ui('contracts').onclick=contractsMenu;
+ ui('shop').onclick=shop;ui('journal').onclick=journal;ui('location').onclick=locationMenu;ui('contracts').onclick=contractsMenu;ui('league').onclick=leagueMenu;
  ui('daytime').onclick=()=>{state.dayPartIndex=((state.dayPartIndex??0)+1)%4;const entries=[['晨光',.30],['正午',.50],['落日',.745],['星夜',.91]];const [name,value]=entries[state.dayPartIndex];world.setTimeOfDay(value,{resumeCycle:true});toast('时段调整 · '+name)};
  ui('weather').onclick=()=>{const w=(state.weatherLevel||0)+1;state.weatherLevel=w%3;world.setWeather([0,.52,.93][state.weatherLevel]);
   world.setWind([.20,.52,.85][state.weatherLevel]);toast(['晴日天气','山谷薄雾','风雨将至'][state.weatherLevel])};
@@ -657,6 +759,7 @@ export function createAngler(world){
   boatMode:state.boatMode,boatOwned:saveData.boatOwned,boatFuel:world.boat.getState().fuel,boatDistance:previousBoatDistance+world.boat.getState().distance,
   bait:saveData.bait,baitName:BAITS[saveData.bait].name,activeBait:state.activeBait,baitStock:{...saveData.baitStock},
   contractsReady:availableClaims(saveData.contracts,saveData.catches),contractsCompleted:CONTRACTS.filter(job=>saveData.contracts.claimed[job.id]).length,
+   league:leagueProgress(saveData.league),
   recentCatchCount:saveData.catchLog.length,lineSegments:LINE_SEGMENTS,liveHabitat:habitat({
     bait:saveData.bait,depth:[.30,.22,.72][state.location],location:state.location,
     timeOfDay:world.getState().timeOfDay,weather:world.getState().weather,wind:world.getState().wind}).conditions,

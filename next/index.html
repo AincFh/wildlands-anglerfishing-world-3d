@@ -74,6 +74,23 @@ button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e9ffa
 #boatButton[aria-pressed="true"]{color:#ecffdd;background:rgba(42,103,88,.76);border-color:#b4dfbb}
 #boatButton:disabled{opacity:.53;cursor:not-allowed}
 @media(max-width:800px){#boatHud{font-size:10px;padding:6px 8px}#boatButton,#boatExit,#boatRefuel{font-size:11px}}
+/* Lake League: transparent native tournament cards, no full-screen opaque overlay. */
+#leagueHud{margin-top:8px;padding:8px 10px;font-size:11px;line-height:1.7;color:#e6f9d9;border:1px solid rgba(190,229,172,.33);background:rgba(37,77,52,.45);border-radius:9px;font-variant-numeric:tabular-nums}
+#leagueHud[hidden]{display:none}
+.league-active{border:1px solid rgba(197,237,176,.48);border-radius:14px;padding:18px;margin:0 0 18px;background:linear-gradient(140deg,rgba(54,93,75,.42),rgba(11,37,38,.75))}
+.league-active>b{font-size:19px;display:block;margin:6px 0 13px}
+.league-active>small{display:block;font-size:11px;line-height:1.8;color:#d2e6d4}
+.league-stats{display:flex;gap:14px;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.league-stats span{font-size:11px;color:#b9d0c1}.league-stats strong{display:block;font-size:19px;color:#e5f4d9;font-variant-numeric:tabular-nums;margin-top:5px}
+.league-forfeit{margin-top:13px;padding:9px 13px;border:1px solid rgba(228,162,140,.48);border-radius:9px;background:rgba(88,46,47,.45);color:#ffd6c6;font-size:11px}
+.league-forfeit:disabled{opacity:.48;cursor:not-allowed}
+.league-cup{display:flex;flex-direction:column;align-items:stretch;gap:8px}
+.league-cup.active{border-color:rgba(192,235,170,.5)}
+.league-cup small{line-height:1.7}.league-medals{font-size:10px;color:#e7caa0}
+.league-cup button{margin-top:auto}
+.league-history-row{display:grid;grid-template-columns:minmax(0,1.35fr) 1fr auto;gap:12px;align-items:center;border-bottom:1px solid rgba(219,246,216,.15);padding:11px 0;font-size:12px}
+.league-history-row span{color:#cde4bf}.league-history-row small{color:#b1c6bc;text-align:right}
+@media(max-width:620px){.league-stats{gap:12px}.league-history-row{grid-template-columns:1fr 1fr}.league-history-row small{grid-column:1/-1;text-align:left}#leagueHud{font-size:10px}}
 </style>
 </head>
 <body>
@@ -82,7 +99,7 @@ button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e9ffa
 <div id="hud" hidden>
   <div class="topbar">
     <div class="brand"><span class="brand-mark">W</span><div><strong>WILDLANDS <span style="color:var(--accent)">NEXT</span></strong><small>山野钓行 / ALPINE FISHING RESERVE</small></div></div>
-    <div class="toptools"><span class="top-meta" id="clock">06:30 · 晴</span><button class="glass-btn" id="weather">天气</button><button class="glass-btn" id="daytime">时段</button><button class="glass-btn" id="location">探鱼图</button><button class="glass-btn" id="boatButton" type="button" aria-label="登船或控制抛锚">乘船出航</button><button class="glass-btn" id="boatExit" type="button" hidden>返回岸上</button><button class="glass-btn" id="boatRefuel" type="button" hidden>补给燃油</button><button class="glass-btn" id="observeFish" type="button" aria-pressed="false" title="跟随湖中真实游动的鱼群">水下观鱼</button><button class="glass-btn" id="contracts">湖泊委托</button><button class="glass-btn" id="journal">图鉴 / 日志</button><button class="glass-btn" id="shop">装备</button></div>
+    <div class="toptools"><span class="top-meta" id="clock">06:30 · 晴</span><button class="glass-btn" id="weather">天气</button><button class="glass-btn" id="daytime">时段</button><button class="glass-btn" id="location">探鱼图</button><button class="glass-btn" id="boatButton" type="button" aria-label="登船或控制抛锚">乘船出航</button><button class="glass-btn" id="boatExit" type="button" hidden>返回岸上</button><button class="glass-btn" id="boatRefuel" type="button" hidden>补给燃油</button><button class="glass-btn" id="observeFish" type="button" aria-pressed="false" title="跟随湖中真实游动的鱼群">水下观鱼</button><button class="glass-btn" id="contracts">湖泊委托</button><button class="glass-btn" id="league" type="button">湖泊锦标赛</button><button class="glass-btn" id="journal">图鉴 / 日志</button><button class="glass-btn" id="shop">装备</button></div>
   </div>
   <div id="underwaterNote" hidden aria-live="polite"><b>LIVE UNDERWATER · 水下跟拍</b><span>正在追随真实游动的鱼群 · 点击「返回岸上」恢复钓鱼</span></div>
   <div id="event"><span class="eyebrow">LAKE VISTA · 钓点 01</span><strong id="eventTitle">薄雾在山谷间缓缓散开</strong><span id="eventText">观察湖面鱼群，把饵送到合适的水域。</span></div>
@@ -94,7 +111,7 @@ button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e9ffa
     <button type="button" data-move="KeyD" aria-label="向右移动">→</button>
   </div>
   <div id="bottom">
-    <div id="status"><div class="status-label" id="statusTag">准备抛投</div><div id="instruction">寻找水面波纹，选择抛投力度</div><div id="hint">拖动场景可环顾 · 按住空格/中央按钮蓄力</div><div style="margin-top:10px;font-size:11px;color:var(--accent)" id="funds">金币 1,200 · 鱼获 0</div><div id="boatHud" hidden aria-live="polite">游船 · 0.0 km/h · 燃油 100%</div><div id="baitHud" class="bait-hud" aria-live="polite">当前饵料 通用溪饵 · ∞ 份</div><button type="button" id="audioToggle" class="glass-btn" style="padding:5px 9px;font-size:10px;margin-top:7px">环境音：开</button></div>
+    <div id="status"><div class="status-label" id="statusTag">准备抛投</div><div id="instruction">寻找水面波纹，选择抛投力度</div><div id="hint">拖动场景可环顾 · 按住空格/中央按钮蓄力</div><div style="margin-top:10px;font-size:11px;color:var(--accent)" id="funds">金币 1,200 · 鱼获 0</div><div id="boatHud" hidden aria-live="polite">游船 · 0.0 km/h · 燃油 100%</div><div id="leagueHud" hidden aria-live="polite">锦标赛未开始</div><div id="baitHud" class="bait-hud" aria-live="polite">当前饵料 通用溪饵 · ∞ 份</div><button type="button" id="audioToggle" class="glass-btn" style="padding:5px 9px;font-size:10px;margin-top:7px">环境音：开</button></div>
     <div id="control"><div id="power"><div id="powerFill"></div></div><button id="cast" aria-label="抛竿及收线" type="button">抛竿</button><div id="controlHelp">按住蓄力 · 松开抛投</div></div>
     <div id="fight" hidden><div class="stat-row"><span>鱼线张力</span><b id="tensionNum">0%</b></div><div class="meter"><div id="tensionFill"></div></div><div class="stat-row"><span>剩余距离</span><b id="distance">0 m</b></div><div class="drag-row"><button id="dragDown" aria-label="降低泄力">−</button><span id="drag">泄力 50%</span><button id="dragUp" aria-label="增加泄力">+</button></div></div>
   </div>

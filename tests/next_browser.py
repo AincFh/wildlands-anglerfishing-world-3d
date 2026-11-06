@@ -91,6 +91,16 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         ready=driver.execute_script("return window.__wildlandsNext.getState()")
         assert ready["started"] and ready["phase"] == "ready", ready
         driver.save_screenshot(str(ARTIFACTS / "02-lake-and-rod.png"))
+        # Real in-game tournament registration, no direct state mutation.
+        driver.find_element(By.ID,"league").click()
+        assert len(driver.find_elements(By.CSS_SELECTOR,'[data-league-start]'))==3
+        assert "本地个人最佳" in driver.find_element(By.ID,"modalBody").text
+        driver.find_element(By.CSS_SELECTOR,'[data-league-start="morning"]').click()
+        registered=driver.execute_script("return window.__wildlandsNext.getState().league")
+        assert registered["active"]["id"]=="morning" and registered["active"]["attempts"]==0,registered
+        assert driver.find_element(By.ID,"leagueHud").is_displayed()
+        driver.save_screenshot(str(ARTIFACTS / "02c-league-registration.png"))
+        driver.find_element(By.ID,"close").click()
         # The underwater mode must physically follow a real fish and make the
         # rod unavailable; returning to shore must restore the ready state.
         driver.find_element(By.ID,"observeFish").click()
@@ -159,6 +169,9 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         assert caught["trophyVisible"] and caught["fish3DMeshes"] >= 40, caught
         assert caught["contractsReady"] == 1, caught
         assert caught["recentCatchCount"]>=1 and caught["lineSegments"]==15, caught
+        assert caught["league"]["active"]["catches"]==1,caught["league"]
+        assert caught["league"]["active"]["attempts"]==1,caught["league"]
+        assert caught["league"]["active"]["score"]>0,caught["league"]
         driver.find_element(By.ID,"journal").click()
         assert "FIELD JOURNAL" in driver.find_element(By.ID,"modalBody").text
         assert "最近 20 次鱼获" in driver.find_element(By.ID,"modalBody").text
@@ -175,6 +188,48 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         assert not driver.find_elements(By.CSS_SELECTOR, '[data-contract-claim="first-cast"]')
         driver.save_screenshot(str(ARTIFACTS / "06b-ranger-contracts.png"))
         driver.find_element(By.ID, "close").click()
+        # Finish the tournament through the same real water-cast / hook / land
+        # simulation as the first fish. Only the long bite wait and late fight
+        # are accelerated via existing test hooks, not invented fish records.
+        coins_before_cup=driver.execute_script("return window.__wildlandsNext.getState().coins")
+        for cup_fish in range(2):
+            driver.execute_script("window.__wildlandsNext.angler.reset()")
+            cast=driver.find_element(By.ID,"cast")
+            ActionChains(driver).move_to_element(cast).click_and_hold().pause(.76).release().perform()
+            driver.execute_script("if(window.__wildlandsNext.getState().phase==='flying')window.__wildlandsNext.angler.update(1.0)")
+            for _ in range(16):
+                if driver.execute_script("return window.__wildlandsNext.getState().phase")=="waiting": break
+                time.sleep(.3)
+            assert driver.execute_script("return window.__wildlandsNext.getState().phase")=="waiting"
+            driver.execute_script("window.__wildlandsNext.test.forceBite();window.__wildlandsNext.angler.update(.12)")
+            assert driver.execute_script("return window.__wildlandsNext.getState().phase")=="bite"
+            driver.find_element(By.ID,"cast").click()
+            assert driver.execute_script("return window.__wildlandsNext.getState().phase")=="fighting"
+            driver.execute_script("window.__wildlandsNext.test.forceCatch();window.__wildlandsNext.angler.update(.12)")
+            assert driver.execute_script("return window.__wildlandsNext.getState().phase")=="caught"
+        finished=driver.execute_script("return window.__wildlandsNext.getState().league")
+        assert finished["active"] is None and finished["completed"]==1,finished
+        assert finished["recent"][0]["catches"]==3,finished
+        assert finished["recent"][0]["prize"]>0 and finished["recent"][0]["medal"] in ("bronze","silver","gold"),finished
+        earned=driver.execute_script("return window.__wildlandsNext.getState().coins")
+        assert earned>coins_before_cup,{"before":coins_before_cup,"after":earned,"league":finished}
+        assert driver.execute_script("return JSON.parse(localStorage.getItem('wildlands-next-2026')).league.history.length")==1
+        driver.find_element(By.ID,"league").click()
+        assert "PERSONAL RESULTS" in driver.find_element(By.ID,"modalBody").text
+        assert "铜牌" in driver.find_element(By.ID,"modalBody").text or "银牌" in driver.find_element(By.ID,"modalBody").text or "金牌" in driver.find_element(By.ID,"modalBody").text
+        driver.save_screenshot(str(ARTIFACTS / "06c-league-medal.png"))
+        # A second registration is possible, but forfeiting requires explicit
+        # two-click confirmation and cannot mint a second prize.
+        driver.find_element(By.CSS_SELECTOR,'[data-league-start="morning"]').click()
+        active_again=driver.execute_script("return window.__wildlandsNext.getState().league.active")
+        assert active_again and active_again["attempts"]==0,active_again
+        driver.find_element(By.CSS_SELECTOR,"[data-league-forfeit]").click()
+        assert "确认退赛" in driver.find_element(By.CSS_SELECTOR,"[data-league-forfeit]").text
+        driver.find_element(By.CSS_SELECTOR,"[data-league-forfeit]").click()
+        quit_result=driver.execute_script("return window.__wildlandsNext.getState().league")
+        assert quit_result["active"] is None and quit_result["completed"]==2,quit_result
+        assert quit_result["recent"][0]["medal"]=="abandoned" and quit_result["recent"][0]["prize"]==0,quit_result
+        driver.find_element(By.ID,"close").click()
         driver.find_element(By.ID, "daytime").click()
         assert .48 < driver.execute_script("return window.__wildlandsNext.world.getState().timeOfDay") < .53
         driver.find_element(By.ID, "daytime").click()
