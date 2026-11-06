@@ -382,6 +382,56 @@ export function createAngler(world){
    store();updateFunds();contractsMenu();sound(1040,.18);toast('巡护奖励 +'+result.reward.toLocaleString()+' 金币');
   });
  }
+ function leagueMenu(){
+  const p=leagueProgress(saveData.league),a=p.active;
+  const canChange=['ready','caught','failed'].includes(state.phase)&&state.boatMode!=='piloting';
+  const activeHtml=a?'<section class="league-active"><div class="contract-kicker">ACTIVE MATCH / 正在比赛</div>'+
+   '<b>'+a.name+'</b><div class="league-stats"><span>积分 <strong>'+a.score+'</strong></span>'+
+   '<span>鱼获 <strong>'+a.catches+'/'+a.goal+'</strong></span>'+
+   '<span>有效抛投 <strong>'+a.attempts+'/'+a.limit+'</strong></span></div>'+
+   '<div class="contract-track"><span style="width:'+Math.round(a.catches/a.goal*100)+'%"></span></div>'+
+   '<small>当前等级 '+MEDAL_LABELS[a.projectedMedal]+' · 鱼漂真正入水才计一次抛投；断线、脱钩和主动收回均会消耗机会。</small>'+
+   '<button type="button" class="league-forfeit" data-league-forfeit '+(!canChange?'disabled':'')+'>放弃本轮 · 不退报名费</button></section>':
+   '<p class="contract-intro">参加三档湖泊锦标赛，使用真实鱼获重量、鱼种稀有度、钓点和水深计算成绩。报名后即使关闭游戏也会保留，断线或提前收竿会计作未成功的一次有效抛投。所有排名仅属于本机玩家，不是在线榜单。</p>';
+  const cards=LEAGUE_CUPS.map(c=>{
+   const locked=saveData.catches<c.unlock,canPay=saveData.coins>=c.fee,playing=!!a;
+   const medals=c.thresholds.map((n,i)=>MEDAL_LABELS[['bronze','silver','gold'][i]]+' '+n+' 分 / '+c.prizes[i]+' 金币').join(' · ');
+   const best=p.best[c.id]||0;
+   const disabled=playing||locked||!canPay||!canChange;
+   const caption=locked?'累计鱼获 '+c.unlock+' 尾后解锁':playing?'结束当前锦标赛后报名':!canPay?'金币不足':'报名参赛 · '+c.fee+' 金币';
+   return '<article class="item league-cup'+(a?.id===c.id?' active':'')+'"><div class="contract-kicker">'+c.en+'</div>'+
+    '<b>'+c.name+'</b><small>'+c.detail+'</small>'+
+    '<small>本地个人最佳 '+best+' 分 · '+c.goal+' 条上岸 / 最多 '+c.limit+' 次入水</small>'+
+    '<small class="league-medals">'+medals+'</small>'+
+    '<button type="button" data-league-start="'+c.id+'" '+(disabled?'disabled':'')+'>'+caption+'</button></article>';
+  }).join('');
+  const history=p.recent.map(r=>{
+   const c=LEAGUE_CUPS.find(x=>x.id===r.id);
+   return '<div class="league-history-row"><b>'+c.name+'</b><span>'+r.score+' 分 · '+MEDAL_LABELS[r.medal]+'</span>'+
+    '<small>'+r.catches+' 尾 / '+r.attempts+' 次 · 奖励 '+r.prize+' 金币</small></div>';
+  }).join('');
+  openModal('湖泊锦标赛 · LAKE LEAGUE',
+   activeHtml+'<div class="catalog">'+cards+'</div>'+
+   '<h3 class="catalog-title" style="margin-top:23px">PERSONAL RESULTS / 本机参赛履历</h3>'+
+   (history||'<p class="contract-intro">尚无比赛记录。完成一轮后，奖牌和最佳积分将长期保存在本地。</p>'));
+  document.querySelectorAll('[data-league-start]').forEach(button=>button.onclick=()=>{
+   if(!canChange)return;
+   const result=enterLeague(saveData.league,button.dataset.leagueStart,saveData.coins,saveData.catches);
+   if(!result.ok){toast('无法报名 · 请检查鱼获解锁条件或金币');return}
+   saveData.league=result.league;saveData.coins=result.coins;
+   store();updateFunds();leagueMenu();sound(610,.11);
+   toast('报名成功 · '+result.cup.name+' · 开始真实钓鱼计分');
+  });
+  document.querySelectorAll('[data-league-forfeit]').forEach(button=>button.onclick=()=>{
+   if(!canChange)return;
+   if(button.dataset.confirm!=='yes'){
+    button.dataset.confirm='yes';button.textContent='再次点击确认退赛 · 失去报名费';return;
+   }
+   const result=abandonLeague(saveData.league);
+   saveData.league=result.league;store();updateFunds();leagueMenu();
+   toast('已退出锦标赛 · 本轮未获奖');
+  });
+ }
  function locationMenu(){
   const w=world.getState(),depth=[.30,.22,.72][state.location],center={x:150,y:150},scout=speciesForecast({
    bait:saveData.bait,depth,location:state.location,timeOfDay:w.timeOfDay,weather:w.weather,wind:w.wind});
@@ -544,7 +594,7 @@ export function createAngler(world){
 
  ui('close').onclick=()=>ui('modal').hidden=true;
  ui('modal').onclick=e=>{if(e.target===ui('modal'))ui('modal').hidden=true};
- ui('shop').onclick=shop;ui('journal').onclick=journal;ui('location').onclick=locationMenu;ui('contracts').onclick=contractsMenu;
+ ui('shop').onclick=shop;ui('journal').onclick=journal;ui('location').onclick=locationMenu;ui('contracts').onclick=contractsMenu;ui('league').onclick=leagueMenu;
  ui('daytime').onclick=()=>{state.dayPartIndex=((state.dayPartIndex??0)+1)%4;const entries=[['晨光',.30],['正午',.50],['落日',.745],['星夜',.91]];const [name,value]=entries[state.dayPartIndex];world.setTimeOfDay(value,{resumeCycle:true});toast('时段调整 · '+name)};
  ui('weather').onclick=()=>{const w=(state.weatherLevel||0)+1;state.weatherLevel=w%3;world.setWeather([0,.52,.93][state.weatherLevel]);
   world.setWind([.20,.52,.85][state.weatherLevel]);toast(['晴日天气','山谷薄雾','风雨将至'][state.weatherLevel])};
@@ -709,6 +759,7 @@ export function createAngler(world){
   boatMode:state.boatMode,boatOwned:saveData.boatOwned,boatFuel:world.boat.getState().fuel,boatDistance:previousBoatDistance+world.boat.getState().distance,
   bait:saveData.bait,baitName:BAITS[saveData.bait].name,activeBait:state.activeBait,baitStock:{...saveData.baitStock},
   contractsReady:availableClaims(saveData.contracts,saveData.catches),contractsCompleted:CONTRACTS.filter(job=>saveData.contracts.claimed[job.id]).length,
+   league:leagueProgress(saveData.league),
   recentCatchCount:saveData.catchLog.length,lineSegments:LINE_SEGMENTS,liveHabitat:habitat({
     bait:saveData.bait,depth:[.30,.22,.72][state.location],location:state.location,
     timeOfDay:world.getState().timeOfDay,weather:world.getState().weather,wind:world.getState().wind}).conditions,
