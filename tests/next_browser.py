@@ -94,7 +94,7 @@ with socketserver.TCPServer(("127.0.0.1", 0), Handler) as httpd:
         # Real in-game tournament registration, no direct state mutation.
         driver.find_element(By.ID,"league").click()
         assert len(driver.find_elements(By.CSS_SELECTOR,'[data-league-start]'))==3
-        assert "本机个人最佳" in driver.find_element(By.ID,"modalBody").text
+        assert "本地个人最佳" in driver.find_element(By.ID,"modalBody").text
         driver.find_element(By.CSS_SELECTOR,'[data-league-start="morning"]').click()
         registered=driver.execute_script("return window.__wildlandsNext.getState().league")
         assert registered["active"]["id"]=="morning" and registered["active"]["attempts"]==0,registered
