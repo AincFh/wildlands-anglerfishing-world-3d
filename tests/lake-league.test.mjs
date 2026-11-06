@@ -94,6 +94,8 @@ test('last valid float may still land and settle after the cast limit',()=>{
  assert.equal(result.finished,true);
  assert.equal(result.league.history[0].attempts,6);
  assert.equal(result.league.history[0].catches,1);
+ assert.equal(result.reward,0);
+ assert.equal(result.medal,'none','one fish cannot earn a medal when three are required');
 });
 test('corrupt old saves, forged scores, invalid species and round history are bounded',()=>{
  const legacy=normalizeLeague({});
@@ -120,4 +122,25 @@ test('the league state is JSON roundtrip stable without timers or cross-player s
  assert.equal(fish.ok,true);
  assert.equal(fish.league.active.seenSpecies[0],'镜鲤');
  assert.equal(fish.league.active.seenSpots[0],1);
+});
+
+test('even enormous rare fish scores cannot bypass the required landed-fish count',()=>{
+ let l=start('legend',5000,100).league;
+ // Two excellent fish can clear the Gold score threshold; the league requires 5.
+ for(const fish of [pike,{species:'湖鲟',weight:32,location:2,depth:.92}]){
+  const r=land(l,fish);l=r.league;
+ }
+ assert.ok(l.active.score>LEAGUE_CUPS[2].thresholds[2],l.active);
+ // Spend the remaining 8 legitimate water casts without catching any fish.
+ let last=null;
+ for(let i=0;i<8;i++){
+  last=leagueMiss(leagueWaterCast(l).league,'2026-11-06T18:00:00Z');
+  l=last.league;
+ }
+ assert.equal(last.finished,true);
+ assert.equal(last.medal,'none');
+ assert.equal(last.reward,0);
+ assert.equal(last.league.history.at(-1).catches,2);
+ assert.equal(last.league.history.at(-1).score>1450,true);
+ assert.equal(last.league.history.at(-1).prize,0);
 });
